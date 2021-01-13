@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "keep_exporter"
+version = "1.0.0"
+description = "Google Keep note exporter utility"
+authors = ["Nathan Beals <ndbeals@users.noreply.github.com>"]
+license = "GPL v3"
+
+[tool.poetry.scripts]
+keep_export = "keep_exporter.export:main"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+gkeepapi = "^0.13.4"
+python-frontmatter = "^0.5.0"
+PyYAML = "^5.3.1"
+pathvalidate = "^2.3.2"
+click = "^7.1.2"
+
+[tool.poetry.dev-dependencies]
+black = {version = "^20.8b1", allow-prereleases = true}
+pylint = "^2.6.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
