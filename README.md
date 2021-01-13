@@ -19,6 +19,7 @@ pip3 install keep-exporter
 
 
 ## Usage
+If you do not supply a username or password before running it, you will be prompted to input them.
 ```
 keep_export [OPTIONS]
 Options:
