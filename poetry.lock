@@ -145,6 +145,14 @@ optional = false
 python-versions = "*"
 
 [[package]]
+name = "mdutils"
+version = "1.3.0"
+description = "Useful package for creating Markdown files while executing python code."
+category = "main"
+optional = false
+python-versions = "*"
+
+[[package]]
 name = "mypy-extensions"
 version = "0.4.3"
 description = "Experimental type system extensions for programs checked with the mypy typechecker."
@@ -205,6 +213,7 @@ python-versions = "*"
 [package.dependencies]
 PyYAML = "*"
 six = "*"
+
 
 [[package]]
 name = "pyyaml"
@@ -296,7 +305,7 @@ python-versions = "*"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "8db124cfd7ac8b010d8535c9faf5ca3f9e36d0b087ba2203d555b477c411bca8"
+content-hash = "608ac5f32f9eb09115d688a49cfd1ae71f81f09248caae13069940b9b7310f95"
 
 [metadata.files]
 appdirs = [
@@ -308,7 +317,6 @@ astroid = [
     {file = "astroid-2.4.2.tar.gz", hash = "sha256:2f4078c2a41bf377eea06d71c9d2ba4eb8f6b1af2135bec27bbbb7d8f12bb703"},
 ]
 black = [
-    {file = "black-20.8b1-py3-none-any.whl", hash = "sha256:70b62ef1527c950db59062cda342ea224d772abdf6adc58b86a45421bab20a6b"},
     {file = "black-20.8b1.tar.gz", hash = "sha256:1c02557aa099101b9d21496f8a914e9ed2222ef70336404eeeac8edba836fbea"},
 ]
 certifi = [
@@ -369,6 +377,9 @@ lazy-object-proxy = [
 mccabe = [
     {file = "mccabe-0.6.1-py2.py3-none-any.whl", hash = "sha256:ab8a6258860da4b6677da4bd2fe5dc2c659cff31b3ee4f7f5d64e79735b80d42"},
     {file = "mccabe-0.6.1.tar.gz", hash = "sha256:dd8d182285a0fe56bace7f45b5e7d1a6ebcbf524e8f3bd87eb0f125271b8831f"},
+]
+mdutils = [
+    {file = "mdutils-1.3.0.tar.gz", hash = "sha256:098baa99cf80ccb1e98b051c3cda8f85486d4ccc9abeb8742c1cb3903c6862ae"},
 ]
 mypy-extensions = [
     {file = "mypy_extensions-0.4.3-py2.py3-none-any.whl", hash = "sha256:090fedd75945a69ae91ce1303b5824f428daf5a028d2f6ab8a299250a846f15d"},
