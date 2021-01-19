@@ -36,9 +36,10 @@ def process_note(note: gkeepapi._node.Note) -> frontmatter.Post:
         },
     }
 
-    if note.timestamps.trashed:
+    # gkeepapi appears to be treating "0" as a timestamp rather than null
+    if note.timestamps.trashed and note.timestamps.trashed.year > 1970:
         metadata["timestamps"]["trashed"] = note.timestamps.trashed.timestamp()
-    if note.timestamps.deleted:
+    if note.timestamps.deleted and note.timestamps.deleted.year > 1970:
         metadata["timestamps"]["deleted"] = note.timestamps.deleted.timestamp()
 
     return frontmatter.Post(note.text, handler=None, **metadata)
