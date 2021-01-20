@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os, pathlib
+from typing import List
 import gkeepapi
 import frontmatter
 import click
@@ -17,6 +18,31 @@ def login(user_email: str, password: str) -> gkeepapi.Keep:
 
     return keep
 
+def download_images(keep: gkeepapi.Keep, note_count: int, note: gkeepapi._node.Note, outpath) -> List[pathlib.Path]:
+    if not note.images: return []
+
+    ret = []
+
+    for image in note.images:
+        meta = image.blob.save()        
+        mimetype = meta['mimetype']
+        ocr = meta['extracted_text']
+
+        url = keep._media_api.get(image)
+        print("Downloading %s" % url)
+
+        imgfile = (
+            outpath
+            / f'{sanitize_filename(f"{note_count:04} - " + image.server_id,max_len=135)}.jpg'
+        )
+        
+        imgresp = keep._media_api._session.get(url)
+        with open(imgfile, 'wb') as f:
+            f.write( imgresp.content )
+
+        ret.append( imgfile )
+
+    return ret
 
 def build_frontmatter(note: gkeepapi._node.Note, markdown: str) -> frontmatter.Post:
     metadata = {
@@ -45,7 +71,7 @@ def build_frontmatter(note: gkeepapi._node.Note, markdown: str) -> frontmatter.P
 
     return frontmatter.Post(markdown, handler=None, **metadata)
 
-def build_markdown(note: gkeepapi._node.Note) -> str:
+def build_markdown(note: gkeepapi._node.Note, images: List[pathlib.Path]) -> str:
     # mdutils demands a filename to write to
     # and doesn't seem to support working in memory
     with NamedTemporaryFile() as f:
@@ -70,6 +96,14 @@ def build_markdown(note: gkeepapi._node.Note) -> str:
                     for link in note.annotations.links
                 ]
             )
+
+        if images:
+            doc.new_header(2, "Attached Images")
+            doc.new_line()
+            doc.new_line()
+
+            for image in images:
+                doc.new_line( doc.new_inline_image("", image.name) )
 
         # doc.create_md_file()
         # create_md_file writes out:
@@ -115,9 +149,9 @@ def main(directory, user, password):
         click.echo("output directory does not exist, creating.")
         outpath.mkdir(parents=True)
 
-    notes = keep.all()
+    notes: List[gkeepapi.node.TopLevelNode] = keep.all()
     note_count = 0
-    for note in notes:
+    for note in notes: # type: gkeepapi.node.TopLevelNode
         note_count += 1
         click.echo(f"Processing note #{note_count}")
 
@@ -130,8 +164,10 @@ def main(directory, user, password):
             / f'{sanitize_filename(f"{note_count:04} - " + title,max_len=135)}.md'
         )
 
-        markdown = build_markdown(note)
+        images = download_images(keep, note_count, note, outpath)
+        markdown = build_markdown(note, images)
         fmatter = build_frontmatter(note, markdown)
+
 
         with open(outfile, "wb+") as f:
             frontmatter.dump(fmatter, f)
