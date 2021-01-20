@@ -5,7 +5,8 @@ import gkeepapi
 import frontmatter
 import click
 from pathvalidate import sanitize_filename
-
+from mdutils.mdutils import MdUtils
+from tempfile import NamedTemporaryFile
 
 def login(user_email: str, password: str) -> gkeepapi.Keep:
     keep = gkeepapi.Keep()
@@ -17,7 +18,7 @@ def login(user_email: str, password: str) -> gkeepapi.Keep:
     return keep
 
 
-def process_note(note: gkeepapi._node.Note) -> frontmatter.Post:
+def build_frontmatter(note: gkeepapi._node.Note, markdown: str) -> frontmatter.Post:
     metadata = {
         "id": note.id,
         "title": note.title,
@@ -42,8 +43,28 @@ def process_note(note: gkeepapi._node.Note) -> frontmatter.Post:
     if note.timestamps.deleted and note.timestamps.deleted.year > 1970:
         metadata["timestamps"]["deleted"] = note.timestamps.deleted.timestamp()
 
-    return frontmatter.Post(note.text, handler=None, **metadata)
+    return frontmatter.Post(markdown, handler=None, **metadata)
 
+def build_markdown(note: gkeepapi._node.Note) -> str:
+    # mdutils demands a filename to write to
+    # and doesn't seem to support working in memory
+    with NamedTemporaryFile() as f:
+        doc = MdUtils(file_name=f.name)
+
+        doc.new_header(1, note.title)
+        doc.new_header(2, "Note")
+
+        text = note.text
+
+        doc.new_paragraph(text)
+
+        # doc.create_md_file()
+        # create_md_file writes out:
+        #    data=self.title + self.table_of_contents + self.file_data_text + self.reference.get_references_as_markdown()
+        # but we only care about file_data_text
+        # since we're not generating a TOC or references
+        # and the above adds unnecessary newlines and reading from disk
+        return doc.file_data_text
 
 @click.command()
 @click.option(
@@ -86,14 +107,21 @@ def main(directory, user, password):
     for note in notes:
         note_count += 1
         click.echo(f"Processing note #{note_count}")
-        post = process_note(note)
+
+        title = note.title.strip()
+        if not len(title):
+            title = "untitled"
 
         outfile = (
             outpath
-            / f'{sanitize_filename(f"{note_count:04} - " + post.metadata["title"],max_len=135)} .md'
+            / f'{sanitize_filename(f"{note_count:04} - " + title,max_len=135)}.md'
         )
-        with outfile.open("wb") as fp:
-            frontmatter.dump(post, fp)
+
+        markdown = build_markdown(note)
+        fmatter = build_frontmatter(note, markdown)
+
+        with open(outfile, "wb+") as f:
+            frontmatter.dump(fmatter, f)
 
     click.echo("Done.")
 
