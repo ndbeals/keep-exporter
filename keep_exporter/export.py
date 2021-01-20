@@ -55,6 +55,8 @@ def build_markdown(note: gkeepapi._node.Note) -> str:
         doc.new_header(2, "Note")
 
         text = note.text
+        text = text.replace('☑ ', '- [X] ')
+        text = text.replace('☐ ', '- [ ] ')
 
         doc.new_paragraph(text)
 
