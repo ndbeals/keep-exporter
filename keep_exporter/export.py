@@ -60,6 +60,17 @@ def build_markdown(note: gkeepapi._node.Note) -> str:
 
         doc.new_paragraph(text)
 
+        if note.annotations.links:
+            doc.new_line()
+            doc.new_line()
+            doc.new_header(2, "Links")
+            doc.new_list(
+                [
+                    doc.new_inline_link(link=link.url, text=link.title)
+                    for link in note.annotations.links
+                ]
+            )
+
         # doc.create_md_file()
         # create_md_file writes out:
         #    data=self.title + self.table_of_contents + self.file_data_text + self.reference.get_references_as_markdown()
