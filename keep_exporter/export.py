@@ -147,7 +147,11 @@ def build_markdown(note: gkeepapi._node.Note, images: List[pathlib.Path]) -> str
     help="Google account password (environment variable 'GKEEP_PASSWORD')",
     hide_input=True,
 )
-@click.option("--header/--no-header", default=True)
+@click.option(
+    "--header/--no-header",
+    default=True,
+    help="Choose to include or exclude the frontmatter header (Default: on)",
+)
 def main(directory, user, password, header):
     """A simple utility to export google keep notes to markdown files with metadata stored as a frontmatter header."""
     outpath = pathlib.Path(directory).resolve()

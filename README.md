@@ -26,4 +26,13 @@ Options:
   -d, --directory TEXT  Output directory for exported notes
   -u, --user TEXT       Google account email (environment variable 'GKEEP_USER')
   -p, --password TEXT   Google account password (environment variable 'GKEEP_PASSWORD')
+  --header / --no-header  Choose to include or exclude the frontmatter header (Default: on)
+```
+
+
+## Troubleshooting
+Some users have had issues with the requests library detailed in [this issue](https://github.com/ndbeals/keep-exporter/issues/1) when using `pipx`. The solution is to change the requests library version.
+```
+pipx install keep-exporter 
+pipx inject keep-exporter requests===2.23.0
 ```
