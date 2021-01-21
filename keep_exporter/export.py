@@ -1,48 +1,66 @@
 #!/usr/bin/env python3
-
-import os, pathlib
+import mimetypes
+import os
+import pathlib
 from typing import List
-import gkeepapi
-import frontmatter
+
 import click
-from pathvalidate import sanitize_filename
+import frontmatter
+import gkeepapi
 from mdutils.mdutils import MdUtils
-from tempfile import NamedTemporaryFile
+from pathvalidate import sanitize_filename
+
 
 def login(user_email: str, password: str) -> gkeepapi.Keep:
     keep = gkeepapi.Keep()
     try:
         keep.login(user_email, password)
-    except Exception:
-        raise click.BadParameter("Login failed.")
+    except gkeepapi.exception.LoginException as ex:
+        raise click.BadParameter(f"Login failed: {str(ex)}")
 
     return keep
 
-def download_images(keep: gkeepapi.Keep, note_count: int, note: gkeepapi._node.Note, outpath) -> List[pathlib.Path]:
-    if not note.images: return []
+
+def download_images(
+    keep: gkeepapi.Keep,
+    note_count: int,
+    note: gkeepapi._node.Note,
+    outpath: pathlib.Path,
+) -> List[pathlib.Path]:
+    if not note.images and not note.drawings:
+        return []
 
     ret = []
 
-    for image in note.images:
-        meta = image.blob.save()        
-        mimetype = meta['mimetype']
-        ocr = meta['extracted_text']
+    for image in note.images + note.drawings:
+        meta = image.blob.save()
+        # ocr = meta["extracted_text"]  # TODO save ocr as metadata? in markdown or image?
 
         url = keep._media_api.get(image)
         print("Downloading %s" % url)
 
+        if meta.get("type", "") == "DRAWING":
+            extension = mimetypes.guess_extension(
+                meta.get("drawingInfo", {})
+                .get("snapshotData", {})
+                .get("mimetype", "image/png")
+            )  # All drawings seem to be pngs
+        else:  # 'IMAGE'
+            extension = mimetypes.guess_extension(meta.get("mimetype", "image/jpeg"))
+
         imgfile = (
             outpath
-            / f'{sanitize_filename(f"{note_count:04} - " + image.server_id,max_len=135)}.jpg'
+            / f'{sanitize_filename(f"{note_count:04} - " + image.server_id,max_len=135)}{extension}'
         )
-        
-        imgresp = keep._media_api._session.get(url)
-        with open(imgfile, 'wb') as f:
-            f.write( imgresp.content )
 
-        ret.append( imgfile )
+        imgresp = keep._media_api._session.get(url)
+        with imgfile.open("wb") as f:
+            f.write(imgresp.content)
+
+        ret.append(imgfile)
 
     return ret
+
 
 def build_frontmatter(note: gkeepapi._node.Note, markdown: str) -> frontmatter.Post:
     metadata = {
@@ -63,7 +81,7 @@ def build_frontmatter(note: gkeepapi._node.Note, markdown: str) -> frontmatter.P
         },
     }
 
-    # gkeepapi appears to be treating "0" as a timestamp rather than null
+    # gkeepapi appears to be treating "0" as a timestamp rather than null. Sometimes the data structure does not have the key at all instead of 0.
     if note.timestamps.trashed and note.timestamps.trashed.year > 1970:
         metadata["timestamps"]["trashed"] = note.timestamps.trashed.timestamp()
     if note.timestamps.deleted and note.timestamps.deleted.year > 1970:
@@ -71,47 +89,41 @@ def build_frontmatter(note: gkeepapi._node.Note, markdown: str) -> frontmatter.P
 
     return frontmatter.Post(markdown, handler=None, **metadata)
 
+
 def build_markdown(note: gkeepapi._node.Note, images: List[pathlib.Path]) -> str:
-    # mdutils demands a filename to write to
-    # and doesn't seem to support working in memory
-    with NamedTemporaryFile() as f:
-        doc = MdUtils(file_name=f.name)
+    doc = MdUtils(
+        ""
+    )  # mdutils requires a string file name. Since we're not using it to write files, we can ignore that.
 
-        doc.new_header(1, note.title)
-        doc.new_header(2, "Note")
+    doc.new_header(1, note.title)
+    doc.new_header(2, "Note")
 
-        text = note.text
-        text = text.replace('☑ ', '- [X] ')
-        text = text.replace('☐ ', '- [ ] ')
+    text = note.text
+    text = text.replace("☑ ", "- [X] ")
+    text = text.replace("☐ ", "- [ ] ")
 
-        doc.new_paragraph(text)
+    doc.new_paragraph(text)
 
-        if note.annotations.links:
-            doc.new_line()
-            doc.new_line()
-            doc.new_header(2, "Links")
-            doc.new_list(
-                [
-                    doc.new_inline_link(link=link.url, text=link.title)
-                    for link in note.annotations.links
-                ]
-            )
+    if note.annotations.links:
+        doc.new_line()
+        doc.new_line()
+        doc.new_header(2, "Links")
+        doc.new_list(
+            [
+                doc.new_inline_link(link=link.url, text=link.title)
+                for link in note.annotations.links
+            ]
+        )
 
-        if images:
-            doc.new_header(2, "Attached Images")
-            doc.new_line()
-            doc.new_line()
+    if images:
+        doc.new_line()
+        doc.new_header(2, "Attached Images")
 
-            for image in images:
-                doc.new_line( doc.new_inline_image("", image.name) )
+        for image in images:
+            doc.new_line(doc.new_inline_image("", image.name))
 
-        # doc.create_md_file()
-        # create_md_file writes out:
-        #    data=self.title + self.table_of_contents + self.file_data_text + self.reference.get_references_as_markdown()
-        # but we only care about file_data_text
-        # since we're not generating a TOC or references
-        # and the above adds unnecessary newlines and reading from disk
-        return doc.file_data_text
+    return doc.file_data_text
+
 
 @click.command()
 @click.option(
@@ -135,7 +147,8 @@ def build_markdown(note: gkeepapi._node.Note, images: List[pathlib.Path]) -> str
     help="Google account password (environment variable 'GKEEP_PASSWORD')",
     hide_input=True,
 )
-def main(directory, user, password):
+@click.option("--header/--no-header", default=True)
+def main(directory, user, password, header):
     """A simple utility to export google keep notes to markdown files with metadata stored as a frontmatter header."""
     outpath = pathlib.Path(directory).resolve()
 
@@ -144,14 +157,14 @@ def main(directory, user, password):
     keep = login(user, password)
 
     click.echo("Beginning note export.")
-    
+
     if not outpath.exists():
         click.echo("output directory does not exist, creating.")
         outpath.mkdir(parents=True)
 
     notes: List[gkeepapi.node.TopLevelNode] = keep.all()
     note_count = 0
-    for note in notes: # type: gkeepapi.node.TopLevelNode
+    for note in notes:  # type: gkeepapi.node.TopLevelNode
         note_count += 1
         click.echo(f"Processing note #{note_count}")
 
@@ -166,11 +179,13 @@ def main(directory, user, password):
 
         images = download_images(keep, note_count, note, outpath)
         markdown = build_markdown(note, images)
-        fmatter = build_frontmatter(note, markdown)
 
-
-        with open(outfile, "wb+") as f:
-            frontmatter.dump(fmatter, f)
+        with outfile.open("wb+") as f:
+            if header:
+                fmatter = build_frontmatter(note, markdown)
+                frontmatter.dump(fmatter, f)
+            else:
+                f.write(markdown.encode("utf-8"))
 
     click.echo("Done.")
 
