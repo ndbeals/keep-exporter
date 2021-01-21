@@ -120,7 +120,7 @@ def build_markdown(note: gkeepapi._node.Note, images: List[pathlib.Path]) -> str
 
     if images:
         doc.new_line()
-        doc.new_header(2, "Attached Images")
+        doc.new_header(2, "Attached Media")
 
         for image in images:
             doc.new_line(doc.new_inline_image("", image.name))
@@ -128,32 +128,41 @@ def build_markdown(note: gkeepapi._node.Note, images: List[pathlib.Path]) -> str
     return doc.file_data_text
 
 
-@click.command()
-@click.option(
-    "--directory",
-    "-d",
-    default="./gkeep-export",
-    help="Output directory for exported notes",
+@click.command(
+    context_settings={"max_content_width": 120, "help_option_names": ["-h", "--help"]}
 )
 @click.option(
     "--user",
     "-u",
-    default=lambda: os.environ.get("GKEEP_USER"),
     prompt=True,
-    help="Google account email (environment variable 'GKEEP_USER')",
+    required=True,
+    envvar="GKEEP_USER",
+    show_envvar=True,
+    help="Google account email (prompt if empty)",
 )
 @click.option(
     "--password",
     "-p",
-    default=lambda: os.environ.get("GKEEP_PASSWORD"),
     prompt=True,
-    help="Google account password (environment variable 'GKEEP_PASSWORD')",
+    required=True,
+    envvar="GKEEP_PASSWORD",
+    show_envvar=True,
+    help="Google account password (prompt if empty)",
     hide_input=True,
+)
+@click.option(
+    "--directory",
+    "-d",
+    default="./gkeep-export",
+    show_default=True,
+    help="Output directory for exported notes",
+    type=click.Path(file_okay=False, dir_okay=True, writable=True),
 )
 @click.option(
     "--header/--no-header",
     default=True,
-    help="Choose to include or exclude the frontmatter header (Default: on)",
+    show_default=True,
+    help="Choose to include or exclude the frontmatter header",
 )
 def main(directory, user, password, header):
     """A simple utility to export google keep notes to markdown files with metadata stored as a frontmatter header."""
