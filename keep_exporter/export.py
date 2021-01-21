@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import mimetypes
-import os
 import pathlib
 from typing import List
 
@@ -9,6 +8,8 @@ import frontmatter
 import gkeepapi
 from mdutils.mdutils import MdUtils
 from pathvalidate import sanitize_filename
+
+mimetypes.add_type("audio/3gpp", ".3gp")
 
 
 def login(user_email: str, password: str) -> gkeepapi.Keep:
@@ -27,16 +28,16 @@ def download_images(
     note: gkeepapi._node.Note,
     outpath: pathlib.Path,
 ) -> List[pathlib.Path]:
-    if not note.images and not note.drawings:
+    if not note.images and not note.drawings and not note.audio:
         return []
 
     ret = []
 
-    for image in note.images + note.drawings:
-        meta = image.blob.save()
+    for media in note.images + note.drawings + note.audio:
+        meta = media.blob.save()
         # ocr = meta["extracted_text"]  # TODO save ocr as metadata? in markdown or image?
 
-        url = keep._media_api.get(image)
+        url = keep._media_api.get(media)
         print("Downloading %s" % url)
 
         if meta.get("type", "") == "DRAWING":
@@ -45,19 +46,21 @@ def download_images(
                 .get("snapshotData", {})
                 .get("mimetype", "image/png")
             )  # All drawings seem to be pngs
-        else:  # 'IMAGE'
+        elif meta.get("type") == "IMAGE":
             extension = mimetypes.guess_extension(meta.get("mimetype", "image/jpeg"))
+        else:  # 'AUDIO'
+            extension = mimetypes.guess_extension(meta.get("mimetype", "audio/3gpp"))
 
-        imgfile = (
+        media_file = (
             outpath
-            / f'{sanitize_filename(f"{note_count:04} - " + image.server_id,max_len=135)}{extension}'
+            / f'{sanitize_filename(f"{note_count:04} - " + media.server_id,max_len=135)}{extension}'
         )
 
-        imgresp = keep._media_api._session.get(url)
-        with imgfile.open("wb") as f:
-            f.write(imgresp.content)
+        media_data = keep._media_api._session.get(url)
+        with media_file.open("wb") as f:
+            f.write(media_data.content)
 
-        ret.append(imgfile)
+        ret.append(media_file)
 
     return ret
 
