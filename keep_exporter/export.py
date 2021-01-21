@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
 import os, pathlib
+from typing import List
 import gkeepapi
 import frontmatter
 import click
 from pathvalidate import sanitize_filename
-
+from mdutils.mdutils import MdUtils
+from tempfile import NamedTemporaryFile
 
 def login(user_email: str, password: str) -> gkeepapi.Keep:
     keep = gkeepapi.Keep()
@@ -16,8 +18,33 @@ def login(user_email: str, password: str) -> gkeepapi.Keep:
 
     return keep
 
+def download_images(keep: gkeepapi.Keep, note_count: int, note: gkeepapi._node.Note, outpath) -> List[pathlib.Path]:
+    if not note.images: return []
 
-def process_note(note: gkeepapi._node.Note) -> frontmatter.Post:
+    ret = []
+
+    for image in note.images:
+        meta = image.blob.save()        
+        mimetype = meta['mimetype']
+        ocr = meta['extracted_text']
+
+        url = keep._media_api.get(image)
+        print("Downloading %s" % url)
+
+        imgfile = (
+            outpath
+            / f'{sanitize_filename(f"{note_count:04} - " + image.server_id,max_len=135)}.jpg'
+        )
+        
+        imgresp = keep._media_api._session.get(url)
+        with open(imgfile, 'wb') as f:
+            f.write( imgresp.content )
+
+        ret.append( imgfile )
+
+    return ret
+
+def build_frontmatter(note: gkeepapi._node.Note, markdown: str) -> frontmatter.Post:
     metadata = {
         "id": note.id,
         "title": note.title,
@@ -36,13 +63,55 @@ def process_note(note: gkeepapi._node.Note) -> frontmatter.Post:
         },
     }
 
-    if note.timestamps.trashed:
+    # gkeepapi appears to be treating "0" as a timestamp rather than null
+    if note.timestamps.trashed and note.timestamps.trashed.year > 1970:
         metadata["timestamps"]["trashed"] = note.timestamps.trashed.timestamp()
-    if note.timestamps.deleted:
+    if note.timestamps.deleted and note.timestamps.deleted.year > 1970:
         metadata["timestamps"]["deleted"] = note.timestamps.deleted.timestamp()
 
-    return frontmatter.Post(note.text, handler=None, **metadata)
+    return frontmatter.Post(markdown, handler=None, **metadata)
 
+def build_markdown(note: gkeepapi._node.Note, images: List[pathlib.Path]) -> str:
+    # mdutils demands a filename to write to
+    # and doesn't seem to support working in memory
+    with NamedTemporaryFile() as f:
+        doc = MdUtils(file_name=f.name)
+
+        doc.new_header(1, note.title)
+        doc.new_header(2, "Note")
+
+        text = note.text
+        text = text.replace('☑ ', '- [X] ')
+        text = text.replace('☐ ', '- [ ] ')
+
+        doc.new_paragraph(text)
+
+        if note.annotations.links:
+            doc.new_line()
+            doc.new_line()
+            doc.new_header(2, "Links")
+            doc.new_list(
+                [
+                    doc.new_inline_link(link=link.url, text=link.title)
+                    for link in note.annotations.links
+                ]
+            )
+
+        if images:
+            doc.new_header(2, "Attached Images")
+            doc.new_line()
+            doc.new_line()
+
+            for image in images:
+                doc.new_line( doc.new_inline_image("", image.name) )
+
+        # doc.create_md_file()
+        # create_md_file writes out:
+        #    data=self.title + self.table_of_contents + self.file_data_text + self.reference.get_references_as_markdown()
+        # but we only care about file_data_text
+        # since we're not generating a TOC or references
+        # and the above adds unnecessary newlines and reading from disk
+        return doc.file_data_text
 
 @click.command()
 @click.option(
@@ -80,19 +149,28 @@ def main(directory, user, password):
         click.echo("output directory does not exist, creating.")
         outpath.mkdir(parents=True)
 
-    notes = keep.all()
+    notes: List[gkeepapi.node.TopLevelNode] = keep.all()
     note_count = 0
-    for note in notes:
+    for note in notes: # type: gkeepapi.node.TopLevelNode
         note_count += 1
         click.echo(f"Processing note #{note_count}")
-        post = process_note(note)
+
+        title = note.title.strip()
+        if not len(title):
+            title = "untitled"
 
         outfile = (
             outpath
-            / f'{sanitize_filename(f"{note_count:04} - " + post.metadata["title"],max_len=135)} .md'
+            / f'{sanitize_filename(f"{note_count:04} - " + title,max_len=135)}.md'
         )
-        with outfile.open("wb") as fp:
-            frontmatter.dump(post, fp)
+
+        images = download_images(keep, note_count, note, outpath)
+        markdown = build_markdown(note, images)
+        fmatter = build_frontmatter(note, markdown)
+
+
+        with open(outfile, "wb+") as f:
+            frontmatter.dump(fmatter, f)
 
     click.echo("Done.")
 
