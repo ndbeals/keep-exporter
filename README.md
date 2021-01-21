@@ -1,6 +1,12 @@
 # Keep-Exporter
 A command line utility to export Google Keep notes to markdown files with metadata stored as a frontmatter header. 
 
+Supports exporting:
+ - Simple notes
+ - List notes
+ - Images and Drawings
+ - Audio clips
+ - Link annotations
 
 ## Usage
 If you do not supply a username or password before running it, you will be prompted to input them.
