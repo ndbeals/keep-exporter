@@ -3,11 +3,13 @@ import datetime
 import mimetypes
 import os
 import pathlib
-from typing import Dict, List, NamedTuple, Optional
+import typing
+from typing import Dict, List, NamedTuple, Optional, Set, Tuple, Union, ValuesView
 
 import click
 import frontmatter
 import gkeepapi
+from gkeepapi.node import NodeAudio, NodeDrawing, NodeImage
 from mdutils.mdutils import MdUtils
 from pathvalidate import sanitize_filename
 
@@ -24,18 +26,32 @@ def login(user_email: str, password: str) -> gkeepapi.Keep:
     return keep
 
 
+def all_note_media(
+    note: gkeepapi._node.Note,
+) -> List[Union[NodeImage, NodeDrawing, NodeAudio]]:
+    """
+    Returns a filtered list of only "media" blobs associate with the note.
+    Currently NodeDrawing, NodeImage, and NodeMedia.
+    There are other blob types, but they don't seem actionable as media.
+    """
+    return note.images + note.drawings + note.audio
+
+
 def download_images(
     keep: gkeepapi.Keep,
     note: gkeepapi._node.Note,
     mediapath: pathlib.Path,
     skip_existing: bool,
-) -> List[pathlib.Path]:
-    if not note.images and not note.drawings and not note.audio:
-        return []
+) -> Tuple[List[pathlib.Path], int]:
+
+    note_media = all_note_media(note)
+    if not note_media:
+        return ([], 0)
 
     ret = []
+    downloaded_media = 0
 
-    for media in note.images + note.drawings + note.audio:
+    for media in note_media:
         meta = media.blob.save()
         # ocr = meta["extracted_text"]  # TODO save ocr as metadata? in markdown or image?
 
@@ -59,8 +75,7 @@ def download_images(
         note_media_path.mkdir(exist_ok=True)
 
         media_file = (
-            note_media_path
-            / f"{sanitize_filename(media.server_id,max_len=135)}{extension}"
+            note_media_path / f"{sanitize_filename(media.id,max_len=135)}{extension}"
         )
 
         # checking size isn't perfect, and drawings don't have a size,
@@ -76,18 +91,18 @@ def download_images(
                 f"Media file f{media_file} exists and is same size as in Google Keep. Skipping."
             )
         else:
-            print(
-                f"Downloading media {meta.get('type')} {media.server_id} for note {note.id}"
-            )
+            print(f"Downloading media {meta.get('type')} {media.id} for note {note.id}")
 
             url = keep._media_api.get(media)
             media_data = keep._media_api._session.get(url)
             with media_file.open("wb") as f:
                 f.write(media_data.content)
 
+            downloaded_media += 1
+
         ret.append(media_file)
 
-    return ret
+    return (ret, downloaded_media)
 
 
 def build_frontmatter(note: gkeepapi._node.Note, markdown: str) -> frontmatter.Post:
@@ -154,27 +169,42 @@ def build_markdown(note: gkeepapi._node.Note, images: List[pathlib.Path]) -> str
     return doc.file_data_text
 
 
-MarkdownFile = NamedTuple(
-    "MarkdownFile",
+LocalMedia = NamedTuple(
+    "LocalMedia",
     [
         ("path", pathlib.Path),
-        ("timestamp_updated", Optional[datetime.datetime]),
-        ("google_keep_id", Optional[str]),
-    ],
-)
-
-MediaFile = NamedTuple(
-    "MediaFile",
-    [
-        ("path", pathlib.Path),
-        ("parent_id", Optional[str]),
-        ("google_keep_id", Optional[str]),
+        ("google_keep_note_id", str),
+        ("google_keep_media_id", str),
     ],
 )
 
 
-def index_existing_files(directory: pathlib.Path) -> Dict[str, MarkdownFile]:
-    index = {}
+class LocalNote:
+    def __init__(
+        self,
+        google_keep_id: str,
+        path: Optional[pathlib.Path] = None,
+        timestamp_updated: Optional[datetime.datetime] = None,
+        local_media: Dict[str, LocalMedia] = None,
+    ):
+        self.google_keep_id = google_keep_id
+        self.path = path
+        self.timestamp_updated = timestamp_updated
+
+        if not local_media:
+            self.local_media: Dict[str, LocalMedia] = {}
+        else:
+            self.local_media = local_media
+
+
+def index_existing_files(directory: pathlib.Path) -> Dict[str, LocalNote]:
+    """
+    Scans the output folder looking for existing markdown files
+    and media files and builds an index by google_keep_id of those files
+    using the metadata in the markdown frontmatter and the filenames
+    of the media files.
+    """
+    index: Dict[str, LocalNote] = {}
 
     keep_notes = 0
     unknown_notes = 0
@@ -182,23 +212,37 @@ def index_existing_files(directory: pathlib.Path) -> Dict[str, MarkdownFile]:
     media = 0
 
     for file in directory.rglob("*"):
+        if not file.is_file():
+            continue
+
         # markdown file
         if file.name.endswith(".md"):
             try:
                 with open(file, "r") as f:
                     fm = frontmatter.load(f)
 
-                    info = MarkdownFile(
-                        file,
-                        fm.metadata.get("timestamps").get("updated"),
-                        fm.metadata.get("google_keep_id"),
-                    )
+                    google_keep_id: str = fm.metadata.get("google_keep_id")
+                    if google_keep_id:
+                        if google_keep_id in index and index[google_keep_id].path:
+                            click.echo(
+                                f"Same Google Keep ID {google_keep_id} in multiple files:\n"
+                                f"    {file}\n"
+                                f"    {index[google_keep_id].path}\n"
+                                f"Only the last file will be updated."
+                            )
 
-                    if info.google_keep_id:
                         keep_notes += 1
-                        index[info.google_keep_id] = info
+                        index.setdefault(google_keep_id, LocalNote(google_keep_id))
+
+                        updated: datetime.datetime = datetime.datetime.fromtimestamp(
+                            fm.metadata.get("timestamps", {}).get("updated")
+                        )
+
+                        index[google_keep_id].timestamp_updated = updated
+                        index[google_keep_id].path = file
                     else:
                         unknown_notes += 1
+
             except IOError as ex:
                 errors = 0
                 click.echo(
@@ -209,7 +253,14 @@ def index_existing_files(directory: pathlib.Path) -> Dict[str, MarkdownFile]:
         # media file
         else:
             media += 1
-            click.echo(f"Ignoring media file [{file}]")
+
+            google_keep_id = file.parent.name
+            media_id = ".".join(file.name.split(".")[0:2])
+
+            index.setdefault(google_keep_id, LocalNote(google_keep_id))
+            index[google_keep_id].local_media[media_id] = LocalMedia(
+                file, google_keep_id, media_id
+            )
 
     click.echo(
         f"Indexed local files: {keep_notes} Google Keep notes, {unknown_notes} unknown markdown files, {media} media files, {errors} errors"
@@ -218,12 +269,15 @@ def index_existing_files(directory: pathlib.Path) -> Dict[str, MarkdownFile]:
     return index
 
 
-def try_rename_note(note: MarkdownFile, target_file: pathlib.Path) -> pathlib.Path:
+def try_rename_note(note: LocalNote, target_file: pathlib.Path) -> pathlib.Path:
     """
     Attempts to rename an existing note to the new canonical filename,
     but accepts failures to rename. Returns the path the note now exists
     in, either the old path or the new renamed path.
     """
+    if not note.path:
+        return target_file
+
     click.echo(f"Renaming [{note.path}] to [{target_file}]")
 
     try:
@@ -238,7 +292,7 @@ def build_note_unique_path(
     notepath: pathlib.Path,
     note: gkeepapi._node.Note,
     date_format: str,
-    local_index: Dict[str, MarkdownFile],
+    local_index: Dict[str, LocalNote],
 ) -> pathlib.Path:
     title = note.title.strip()
     if not len(title):
@@ -248,10 +302,13 @@ def build_note_unique_path(
     filename = f'{sanitize_filename(f"{date_str} - " + title,max_len=135)}.md'
     target_path = notepath / filename
 
-    if note.id in local_index:
+    local_note = local_index.get(note.id)
+    local_path = local_note.path if local_note else None
+
+    if local_path:
         # if the note filename matches the current filename for that note, then we're good
-        if local_index[note.id].path == target_path:
-            return local_index[note.id].path
+        if local_path == target_path:
+            return local_path
 
         # if re-naming would result in having to de-dupe the target filename, keep the
         # exising filename - initial pass at fixing this just resulted in bouncing between
@@ -260,7 +317,7 @@ def build_note_unique_path(
             click.echo(
                 f"Note {note.id} will not be renamed. Target file [{target_path}] exists."
             )
-            return local_index[note.id].path
+            return local_path
 
     # otherwise, if the file already exists avoid overwriting it
     # put the unique note ID and an incrementing index at the end of the filename
@@ -271,6 +328,77 @@ def build_note_unique_path(
         dedupe_index += 1
 
     return target_path
+
+
+def delete_local_only_files(
+    local_index: Dict[str, LocalNote],
+    keep_notes: Dict[str, List[gkeepapi.node.Note]],
+    delete_local: bool,
+) -> Tuple[int, int]:
+    """
+    Checks the local index for any notes or media that exist only locally
+    and were not returned in the Google Keep API call.
+    """
+    deleted_notes, deleted_media = 0, 0
+
+    local_only_note_ids = set(local_index.keys()).difference(set(keep_notes.keys()))
+
+    if local_only_note_ids:
+        if not delete_local:
+            click.echo(
+                f"{len(local_only_note_ids)} notes exist locally, but not in Google Keep. Add argument [--delete-local] to delete."
+            )
+        else:
+            click.echo(
+                f"{len(local_only_note_ids)} notes exist locally, but not in Google Keep. Trashing local files."
+            )
+            for note_id in local_only_note_ids:
+                note_path = local_index[note_id].path
+                deleted_notes += 1
+                if note_path:
+                    click.echo(
+                        f"    Deleting unknown local note [{note_id}] file [{local_index[note_id].path}]"
+                    )
+                    note_path.unlink()
+
+    local_only_media: Set[Tuple[str, str]] = set(
+        [
+            (local_media.google_keep_note_id, local_media.google_keep_media_id)
+            for local_note in local_index.values()
+            for local_media in local_note.local_media.values()
+            if local_media.google_keep_note_id and local_media.google_keep_media_id
+        ]
+    )
+
+    notes: ValuesView[gkeepapi._node.Note] = keep_notes.values()
+    keep_media: Set[Tuple[str, str]] = set(
+        [
+            (keep_note.id, keep_media.id)
+            for keep_note in notes
+            for keep_media in all_note_media(keep_note)
+        ]
+    )
+
+    local_only_media_ids = local_only_media.difference(keep_media)
+    if not local_only_media_ids:
+        return (deleted_notes, 0)
+
+    if not delete_local:
+        click.echo(
+            f"{len(local_only_note_ids)} media files exist locally, but not in Google Keep. Add argument [--delete-local] to delete."
+        )
+        return (deleted_notes, 0)
+
+    for (note_id, media_id) in local_only_media_ids:
+        media = local_index[note_id].local_media[media_id]
+
+        click.echo(
+            f"    Deleting media [{media_id}] for note [{note_id}] file [{media.path}]"
+        )
+        media.path.unlink()
+        deleted_media += 1
+
+    return (deleted_notes, deleted_media)
 
 
 @click.command(
@@ -367,39 +495,38 @@ def main(
     click.echo("Indexing remote notes.")
     keep_notes = dict([(note.id, note) for note in keep.all()])
 
-    deleted_notes = set(local_index.keys()).difference(set(keep_notes.keys()))
+    skipped_notes, updated_notes, new_notes = 0, 0, 0
+    downloaded_media = 0
+    deleted_notes, deleted_media = delete_local_only_files(
+        local_index, keep_notes, delete_local
+    )
 
-    if deleted_notes:
-        if not delete_local:
-            click.echo(
-                f"{len(deleted_notes)} notes exist locally, but not in Google Keep. Add argument [--delete-local] to delete."
-            )
-        else:
-            click.echo(
-                f"{len(deleted_notes)} notes exist locally, but not in Google Keep. Trashing local files."
-            )
-            for note_id in deleted_notes:
-                click.echo(
-                    f"    Deleting unknown local note [{note_id}] file [{local_index[note_id].path}]"
-                )
-                local_index[note_id].path.unlink()
-
-    for note in keep_notes.values():  # type: gkeepapi.node.TopLevelNode
-        if note.id in local_index:
-            click.echo(f"Updating existing file for note {note.id}")
+    for note in keep_notes.values():  # type: gkeepapi._node.Note
+        local_note = local_index.get(note.id)
+        if local_note:
+            if local_note.timestamp_updated == note.timestamps.updated:
+                skipped_notes += 1
+                continue
+            else:
+                updated_notes += 1
+                click.echo(f"Updating existing file for note {note.id}")
         else:
             click.echo(f"Downloading new note {note.id}")
+            new_notes += 1
 
         target_path = build_note_unique_path(notepath, note, date_format, local_index)
 
-        if note.id in local_index:
-            if rename_local and local_index[note.id].path != target_path:
+        local_path = local_index.get(note.id, LocalNote(note.id)).path
+        if local_path:
+            if rename_local and local_path != target_path:
                 target_path = try_rename_note(local_index[note.id], target_path)
             else:
-                target_path = local_index[note.id].path
+                target_path = local_path
 
-        images = download_images(keep, note, mediapath, skip_existing_media)
+        images, downloaded = download_images(keep, note, mediapath, skip_existing_media)
         markdown = build_markdown(note, images)
+
+        downloaded_media += downloaded
 
         with target_path.open("wb+") as f:
             if header:
@@ -408,7 +535,11 @@ def main(
             else:
                 f.write(markdown.encode("utf-8"))
 
-    click.echo("Done.")
+    click.echo("Finished syncing.")
+    click.echo(
+        f"Notes: {skipped_notes} unchanged, {updated_notes} updated, {new_notes} new, {deleted_notes} deleted"
+    )
+    click.echo(f"Media: {downloaded_media} downloaded, {deleted_media} deleted")
 
 
 if __name__ == "__main__":
