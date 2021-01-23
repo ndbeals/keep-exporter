@@ -503,14 +503,7 @@ def main(
 
     for note in keep_notes.values():  # type: gkeepapi._node.Note
         local_note = local_index.get(note.id)
-        if local_note:
-            if local_note.timestamp_updated == note.timestamps.updated:
-                skipped_notes += 1
-                continue
-            else:
-                updated_notes += 1
-                click.echo(f"Updating existing file for note {note.id}")
-        else:
+        if not local_note:
             click.echo(f"Downloading new note {note.id}")
             new_notes += 1
 
@@ -522,6 +515,16 @@ def main(
                 target_path = try_rename_note(local_index[note.id], target_path)
             else:
                 target_path = local_path
+
+        # decide to skip after the rename (due to date format change) has a chance
+        if local_note:
+            if local_note.timestamp_updated == note.timestamps.updated:
+                skipped_notes += 1
+                continue
+            else:
+                updated_notes += 1
+                click.echo(f"Updating existing file for note {note.id}")
+
 
         images, downloaded = download_images(keep, note, mediapath, skip_existing_media)
         markdown = build_markdown(note, images)
