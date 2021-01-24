@@ -5,6 +5,7 @@ import pathlib
 from typing import Dict, List, NamedTuple, Optional, Set, Tuple, Union, ValuesView
 
 import click
+import click_config_file
 import frontmatter
 import gkeepapi
 from gkeepapi.node import NodeAudio, NodeDrawing, NodeImage
@@ -14,14 +15,28 @@ from pathvalidate import sanitize_filename
 mimetypes.add_type("audio/3gpp", ".3gp")
 
 
-def login(user_email: str, password: str) -> gkeepapi.Keep:
+def login(
+    user_email: str, password: Optional[str], token: Optional[str]
+) -> gkeepapi.Keep:
     keep = gkeepapi.Keep()
-    try:
-        keep.login(user_email, password)
-    except gkeepapi.exception.LoginException as ex:
-        raise click.BadParameter(f"Login failed: {str(ex)}")
+    if token:
+        try:
+            click.echo("Logging in with token")
+            keep.resume(user_email, token)
+            print(keep.getMasterToken())
+            return keep
+        except gkeepapi.exception.LoginException as ex:
+            raise click.BadParameter(f"Token login (resume) failed: {str(ex)}")
 
-    return keep
+    if password:
+        try:
+            click.echo("Logging in with password")
+            keep.login(user_email, password)
+            return keep
+        except gkeepapi.exception.LoginException as ex:
+            raise click.BadParameter(f"Password login failed: {str(ex)}")
+
+    raise click.BadParameter(f"Neither password nor token provided to login.")
 
 
 def all_note_media(
@@ -399,9 +414,56 @@ def delete_local_only_files(
     return (deleted_notes, deleted_media)
 
 
+def get_click_supplied_value(ctx: click.core.Context, param_name: str) -> Any:
+    """
+    Find the value passed to Click through the following priority:
+
+    #1 - a parameter passed on the command line
+    #2 - a config value passed through @click_config_file
+    #3 - None
+    """
+
+    # I didn't find in the docs for Click a simpler way to get the
+    # parameter if specified, fall back to the default_map if not, None if neither
+    # but this feels like a standard thing that should be built-in
+
+    if param_name in ctx.params:
+        return ctx.params[param_name]
+
+    if ctx.default_map:
+        return ctx.default_map.get(param_name)
+
+    return None
+
+
+def token_callback_password_or_token(
+    ctx: click.core.Context,
+    param: Union[click.core.Option, click.core.Parameter],
+    value: Any,
+) -> Any:
+    """
+    On the token param (after password), ensure that either a password
+    or token were supplied, and if neither was, prompt for the password.
+    """
+    if value:
+        token = value
+    else:
+        token = get_click_supplied_value(ctx, "token")
+    password = get_click_supplied_value(ctx, "password")
+
+    if not token and not password:
+        click.echo("Neither password nor token provided. Prompting for password")
+        password = click.prompt("Password", hide_input=True)
+        ctx.params["password"] = password
+        return None
+
+    return token
+
+
 @click.command(
     context_settings={"max_content_width": 120, "help_option_names": ["-h", "--help"]}
 )
+@click_config_file.configuration_option()
 @click.option(
     "--user",
     "-u",
@@ -414,12 +476,17 @@ def delete_local_only_files(
 @click.option(
     "--password",
     "-p",
-    prompt=True,
-    required=True,
     envvar="GKEEP_PASSWORD",
     show_envvar=True,
-    help="Google account password (prompt if empty)",
+    help="Google account password (prompt if empty). Either this or token is required.",
     hide_input=True,
+)
+@click.option(
+    "--token",
+    "-t",
+    envvar="GKEEP_TOKEN",
+    help="Google account token from prior run. Either this or password is required.",
+    callback=token_callback_password_or_token,
 )
 @click.option(
     "--directory",
@@ -462,7 +529,8 @@ def delete_local_only_files(
 def main(
     directory: str,
     user: str,
-    password: str,
+    password: Optional[str],
+    token: Optional[str],
     header: bool,
     delete_local: bool,
     rename_local: bool,
@@ -476,8 +544,7 @@ def main(
     click.echo(f"Notes directory: {notepath}")
     click.echo(f"Media directory: {mediapath}")
 
-    click.echo("Logging in.")
-    keep = login(user, password)
+    keep = login(user, password, token)
 
     if not notepath.exists():
         click.echo("Notes directory does not exist, creating.")

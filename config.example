@@ -1,0 +1,6 @@
+user = "username"
+password = "password"
+token = "token_obtained_from_gkeepapi"
+directory = "/tmp/keep_export/"
+rename_local = True
+delete_local = True
