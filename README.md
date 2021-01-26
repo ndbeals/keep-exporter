@@ -13,11 +13,24 @@ If you do not supply a username or password before running it, you will be promp
 ```
 Usage: keep_export [OPTIONS]
 Options:
-  -u, --user TEXT            Google account email (prompt if empty)  [env var: GKEEP_USER; required]
-  -p, --password TEXT        Google account password (prompt if empty)  [env var: GKEEP_PASSWORD; required]
-  -d, --directory DIRECTORY  Output directory for exported notes  [default: ./gkeep-export]
-  --header / --no-header     Choose to include or exclude the frontmatter header  [default: True]
-  -h, --help                 Show this message and exit.
+  -u, --user TEXT                 Google account email (prompt if empty)  [env var: GKEEP_USER; required]
+  -p, --password TEXT             Google account password (prompt if empty)  [env var: GKEEP_PASSWORD; required]
+  -d, --directory DIRECTORY       Output directory for exported notes  [default: ./gkeep-export]
+  --header / --no-header          Choose to include or exclude the frontmatter header  [default: True]
+  --delete-local / --no-delete-local
+                                  Choose to delete or leave as-is any notes that exist locally but not in Google Keep
+                                  [default: False]
+
+  --rename-local / --no-rename-local
+                                  Choose to rename or leave as-is any notes that change titles in Google Keep
+                                  [default: False]
+
+  --date-format TEXT              Date format to use for the prefix of the note filenames. Reflects the created date
+                                  of the note.  [default: %Y-%m-%d]
+
+  --skip-existing-media / --no-skip-existing-media
+                                  Skip existing media if it appears unchanged from the local copy.  [default: True]
+  -h, --help                      Show this message and exit.
 ```
 
 ### Notes
