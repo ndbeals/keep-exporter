@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 import datetime
 import mimetypes
-import os
 import pathlib
-import typing
 from typing import Dict, List, NamedTuple, Optional, Set, Tuple, Union, ValuesView
 
 import click
@@ -26,9 +24,7 @@ def login(user_email: str, password: str) -> gkeepapi.Keep:
     return keep
 
 
-def all_note_media(
-    note: gkeepapi._node.Note,
-) -> List[Union[NodeImage, NodeDrawing, NodeAudio]]:
+def all_note_media( note: gkeepapi._node.Note ) -> List[Union[NodeImage, NodeDrawing, NodeAudio]]:
     """
     Returns a filtered list of only "media" blobs associate with the note.
     Currently NodeDrawing, NodeImage, and NodeMedia.
@@ -37,12 +33,7 @@ def all_note_media(
     return note.images + note.drawings + note.audio
 
 
-def download_images(
-    keep: gkeepapi.Keep,
-    note: gkeepapi._node.Note,
-    mediapath: pathlib.Path,
-    skip_existing: bool,
-) -> Tuple[List[pathlib.Path], int]:
+def download_media( keep: gkeepapi.Keep, note: gkeepapi._node.Note, mediapath: pathlib.Path, skip_existing: bool) -> Tuple[List[pathlib.Path], int]:
 
     note_media = all_note_media(note)
     if not note_media:
@@ -526,7 +517,7 @@ def main(
                 click.echo(f"Updating existing file for note {note.id}")
 
 
-        images, downloaded = download_images(keep, note, mediapath, skip_existing_media)
+        images, downloaded = download_media(keep, note, mediapath, skip_existing_media)
         markdown = build_markdown(note, images)
 
         downloaded_media += downloaded
