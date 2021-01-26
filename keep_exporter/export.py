@@ -2,7 +2,8 @@
 import datetime
 import mimetypes
 import pathlib
-from typing import Dict, List, NamedTuple, Optional, Set, Tuple, Union, ValuesView
+from typing import (Dict, List, NamedTuple, Optional, Set, Tuple, Union,
+                    ValuesView)
 
 import click
 import frontmatter
