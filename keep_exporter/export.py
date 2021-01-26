@@ -77,6 +77,7 @@ def build_frontmatter(note: gkeepapi._node.Note, markdown: str) -> frontmatter.P
         "parent_id": note.parent_id,
         "sort": note.sort,
         "url": note.url,
+        "tags": [label.name for label in note.labels.all()],
         "timestamps": {
             "created": note.timestamps.created.timestamp(),
             "edited": note.timestamps.edited.timestamp(),
