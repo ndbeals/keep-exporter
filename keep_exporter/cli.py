@@ -1,8 +1,10 @@
 import pathlib
-from typing import Any, Optional, Union
+from typing import Any, Optional, Union, Tuple
 
 import click
+import click_config_file
 import frontmatter
+import gkeepapi
 
 # from .export import *
 from keep_exporter.export import (
@@ -13,11 +15,37 @@ from keep_exporter.export import (
     delete_local_only_files,
     download_media,
     index_existing_files,
-    login,
+    # login,
     try_rename_note,
 )
 
 # import keep_exporter.export as export
+
+def login(
+    user_email: str, password: Optional[str], token: Optional[str]
+) -> Tuple[gkeepapi.Keep, str]:
+    keep = gkeepapi.Keep()
+    if token:
+        try:
+            click.echo("Logging in with token")
+            keep.resume(user_email, token)
+            # print(keep.getMasterToken())
+            return (keep, "")
+        except gkeepapi.exception.LoginException as ex:
+            raise click.BadParameter(f"Token login (resume) failed: {str(ex)}")
+
+    if password:
+        try:
+            click.echo("Logging in with password")
+            keep.login(user_email, password)
+            # print(keep.getMasterToken())
+            return (keep, keep.getMasterToken())
+        except gkeepapi.exception.LoginException as ex:
+            raise click.BadParameter(f"Password login failed: {str(ex)}")
+
+    raise click.BadParameter(f"Neither password nor token provided to login.")
+
+
 
 
 def get_click_supplied_value(ctx: click.core.Context, param_name: str) -> Any:
@@ -64,9 +92,6 @@ def token_callback_password_or_token(
         return None
 
     return token
-
-
-import click_config_file
 
 
 @click.command(
@@ -153,8 +178,10 @@ def main(
     click.echo(f"Notes directory: {notepath}")
     click.echo(f"Media directory: {mediapath}")
 
-    keep = login(user, password, token)
-    exit(0)
+    keep, new_token = login(user, password, token)
+    if len(new_token) > 0:
+        pass # save new token, where/how?
+
 
     if not notepath.exists():
         click.echo("Notes directory does not exist, creating.")

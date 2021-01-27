@@ -14,32 +14,6 @@ from pathvalidate import sanitize_filename
 
 mimetypes.add_type("audio/3gpp", ".3gp")
 
-
-def login(
-    user_email: str, password: Optional[str], token: Optional[str]
-) -> gkeepapi.Keep:
-    keep = gkeepapi.Keep()
-    if token:
-        try:
-            click.echo("Logging in with token")
-            keep.resume(user_email, token)
-            # print(keep.getMasterToken())
-            return keep
-        except gkeepapi.exception.LoginException as ex:
-            raise click.BadParameter(f"Token login (resume) failed: {str(ex)}")
-
-    if password:
-        try:
-            click.echo("Logging in with password")
-            keep.login(user_email, password)
-            # print(keep.getMasterToken())
-            return keep
-        except gkeepapi.exception.LoginException as ex:
-            raise click.BadParameter(f"Password login failed: {str(ex)}")
-
-    raise click.BadParameter(f"Neither password nor token provided to login.")
-
-
 def all_note_media(
     note: gkeepapi._node.Note,
 ) -> List[Union[NodeImage, NodeDrawing, NodeAudio]]:
@@ -260,7 +234,7 @@ def index_existing_files(directory: pathlib.Path) -> Dict[str, LocalNote]:
             except IOError as ex:
                 errors = 0
                 click.echo(
-                    "Unable to open Markdown file [{os.path.join(root, file)}]. Skipping: {str(ex)}",
+                    f"Unable to open Markdown file [{str(file.resolve())}]. Skipping: {str(ex)}",
                     err=True,
                 )
 
