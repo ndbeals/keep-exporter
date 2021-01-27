@@ -2,7 +2,7 @@
 import datetime
 import mimetypes
 import pathlib
-from typing import Dict, List, NamedTuple, Optional, Set, Tuple, Union, ValuesView, Any
+from typing import Any, Dict, List, NamedTuple, Optional, Set, Tuple, Union, ValuesView
 
 import click
 import click_config_file
@@ -23,7 +23,7 @@ def login(
         try:
             click.echo("Logging in with token")
             keep.resume(user_email, token)
-            print(keep.getMasterToken())
+            # print(keep.getMasterToken())
             return keep
         except gkeepapi.exception.LoginException as ex:
             raise click.BadParameter(f"Token login (resume) failed: {str(ex)}")
@@ -32,7 +32,7 @@ def login(
         try:
             click.echo("Logging in with password")
             keep.login(user_email, password)
-            print(keep.getMasterToken())
+            # print(keep.getMasterToken())
             return keep
         except gkeepapi.exception.LoginException as ex:
             raise click.BadParameter(f"Password login failed: {str(ex)}")
@@ -413,4 +413,3 @@ def delete_local_only_files(
         deleted_media += 1
 
     return (deleted_notes, deleted_media)
-
