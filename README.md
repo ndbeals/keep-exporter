@@ -13,8 +13,12 @@ If you do not supply a username or password before running it, you will be promp
 ```
 Usage: keep_export [OPTIONS]
 Options:
+  --config FILE                   Read configuration from FILE.
   -u, --user TEXT                 Google account email (prompt if empty)  [env var: GKEEP_USER; required]
-  -p, --password TEXT             Google account password (prompt if empty)  [env var: GKEEP_PASSWORD; required]
+  -p, --password TEXT             Google account password (prompt if empty). Either this or token is required.  [env
+                                  var: GKEEP_PASSWORD]
+
+  -t, --token TEXT                Google account token from prior run. Either this or password is required.
   -d, --directory DIRECTORY       Output directory for exported notes  [default: ./gkeep-export]
   --header / --no-header          Choose to include or exclude the frontmatter header  [default: True]
   --delete-local / --no-delete-local

@@ -6,7 +6,7 @@ authors = ["Nathan Beals <ndbeals@users.noreply.github.com>"]
 license = "GPL v3"
 
 [tool.poetry.scripts]
-keep_export = "keep_exporter.export:main"
+keep_export = "keep_exporter.cli:main"
 
 [tool.poetry.dependencies]
 python = "^3.8"
@@ -16,6 +16,7 @@ PyYAML = "^5.3.1"
 pathvalidate = "^2.3.2"
 click = "^7.1.2"
 mdutils = "^1.3.0"
+click-config-file = "^0.6.0"
 
 [tool.poetry.dev-dependencies]
 black = {version = "^20.8b1", allow-prereleases = true}
