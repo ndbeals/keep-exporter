@@ -6,7 +6,7 @@ authors = ["Nathan Beals <ndbeals@users.noreply.github.com>"]
 license = "GPL v3"
 
 [tool.poetry.scripts]
-keep_export = "keep_exporter.export:main"
+keep_export = "keep_exporter.cli:main"
 
 [tool.poetry.dependencies]
 python = "^3.8"
