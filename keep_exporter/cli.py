@@ -154,7 +154,6 @@ def main(
     click.echo(f"Media directory: {mediapath}")
 
     keep = login(user, password, token)
-    exit(0)
 
     if not notepath.exists():
         click.echo("Notes directory does not exist, creating.")
