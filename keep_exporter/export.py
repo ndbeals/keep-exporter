@@ -97,23 +97,23 @@ def download_media(
 
 def build_frontmatter(note: gkeepapi._node.Note, markdown: str) -> frontmatter.Post:
     metadata = {
-        "google_keep_id": note.id,
         "title": note.title,
+        "url": note.url,
         "pinned": note.pinned,
         "archived": note.archived,
         "trashed": note.trashed,
-        # "deleted": note.deleted, -- unused, when google keep actually ~deletes~ a note, the api no longer returns it
-        "color": note.color.name,
-        "type": note.type.name,
-        "parent_id": note.parent_id,
-        "sort": note.sort,
-        "url": note.url,
+        # "deleted": note.deleted, # unused, when google keep actually ~deletes~ a note, the api no longer returns it
         "tags": [label.name for label in note.labels.all()],
+        "color": note.color.name,
         "timestamps": {
             "created": note.timestamps.created.timestamp(),
             "edited": note.timestamps.edited.timestamp(),
             "updated": note.timestamps.updated.timestamp(),
         },
+        "google_keep_id": note.id,
+        "type": note.type.name,
+        "parent_id": note.parent_id,
+        "sort": note.sort,
     }
 
     # gkeepapi appears to be treating "0" as a timestamp rather than null.
@@ -165,7 +165,7 @@ def write_note(target_path, header, note, markdown):
     with target_path.open("wb+") as file_handle:
         if header:
             front_matter = build_frontmatter(note, markdown)
-            frontmatter.dump(front_matter, file_handle)
+            frontmatter.dump(front_matter, file_handle, sort_keys=False) # don't sort frontmatter keys
         else:
             file_handle.write(markdown.encode("utf-8"))
 
