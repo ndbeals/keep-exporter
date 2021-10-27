@@ -27,6 +27,7 @@ def all_note_media(
     """
     return note.images + note.drawings + note.audio
 
+
 def download_media(
     keep: gkeepapi.Keep,
     note: gkeepapi._node.Note,
@@ -160,12 +161,15 @@ def build_markdown(note: gkeepapi._node.Note, images: List[pathlib.Path]) -> str
 
     return doc.file_data_text
 
+
 def write_note(target_path, header, note, markdown):
-    """ Writes built notes to disk, optionally builds a header/frontmatter too."""
+    """Writes built notes to disk, optionally builds a header/frontmatter too."""
     with target_path.open("wb+") as file_handle:
         if header:
             front_matter = build_frontmatter(note, markdown)
-            frontmatter.dump(front_matter, file_handle, sort_keys=False) # don't sort frontmatter keys
+            frontmatter.dump(
+                front_matter, file_handle, sort_keys=False
+            )  # don't sort frontmatter keys
         else:
             file_handle.write(markdown.encode("utf-8"))
 

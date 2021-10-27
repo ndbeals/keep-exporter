@@ -28,8 +28,6 @@ from keep_exporter.export import (
 )
 
 
-
-
 def login(
     user_email: str, password: Optional[str], token: Optional[str] = None
 ) -> gkeepapi.Keep:
@@ -112,20 +110,23 @@ def token_callback_password_or_token(
 
     return token
 
+
 def date_format_handler(
     ctx: click.core.Context,
     param: Union[click.core.Option, click.core.Parameter],
     value: Any,
 ) -> str:
-    
+
     if param.name == "date_format":
-        if ctx.params.get('date_format') and param.default == value: # If date_format is already set by some other flag, return that same data
-            return ctx.params.get('date_format')
+        if (
+            ctx.params.get("date_format") and param.default == value
+        ):  # If date_format is already set by some other flag, return that same data
+            return ctx.params.get("date_format")
         else:
-            return value #otherwise, set the format to the passed value
+            return value  # otherwise, set the format to the passed value
     else:
         if value:
-            ctx.params['date_format'] = param.metavar
+            ctx.params["date_format"] = param.metavar
 
             return value
 
@@ -192,7 +193,7 @@ def date_format_handler(
     show_default=True,
     help="Choose to rename or leave as-is any notes that change titles in Google Keep",
 )
-@click.option( # Other date-options (e.g --iso8601) must come after this one
+@click.option(  # Other date-options (e.g --iso8601) must come after this one
     "--date-format",
     "date_format",
     default="%Y-%m-%d",
@@ -203,7 +204,7 @@ def date_format_handler(
 )
 @click.option(
     "--iso8601",
-    metavar="%Y-%m-%dT%H:%M:%S", # use `metavar` for the format instead of default or flag_value, hack around click stuff
+    metavar="%Y-%m-%dT%H:%M:%S",  # use `metavar` for the format instead of default or flag_value, hack around click stuff
     default=False,
     is_flag=True,
     help="Format dates in ISO8601 format.",
