@@ -25,15 +25,15 @@ APP_NAME = "Keep Exporter"
 # import keep_exporter.export as export
 
 def login(
-    user_email: str, password: Optional[str], token: Optional[str] = ""
-) -> Tuple[gkeepapi.Keep, str]:
+    user_email: str, password: Optional[str], token: Optional[str] = None
+) -> gkeepapi.Keep:
     keep = gkeepapi.Keep()
     if token:
         try:
             click.echo("Logging in with token")
             keep.resume(user_email, token)
-            # print(keep.getMasterToken())
-            return (keep, keep.getMasterToken())
+
+            return keep
         except gkeepapi.exception.LoginException as ex:
             raise click.BadParameter(f"Token login (resume) failed: {str(ex)}")
 
@@ -41,8 +41,8 @@ def login(
         try:
             click.echo("Logging in with password")
             keep.login(user_email, password)
-            # print(keep.getMasterToken())
-            return (keep, keep.getMasterToken())
+
+            return keep
         except gkeepapi.exception.LoginException as ex:
             raise click.BadParameter(f"Password login failed: {str(ex)}")
 
@@ -103,14 +103,16 @@ def conf_callback(a,b,c):
 # @click.command(
 #     context_settings={"max_content_width": 120, "help_option_names": ["-h", "--help"]}
 # )
-@click.group(invoke_without_command=True,
+@click.group(
+    invoke_without_command=True,
+    # invoke_without_command=False,
     context_settings={"max_content_width": 120, "help_option_names": ["-h", "--help"]}
 )
 @click.pass_context
 @click_config_file.configuration_option(
+    # implicit=False,
     config_file_name=click.get_app_dir(APP_NAME),
     # config_file_name="test",
-    # implicit=False,
     # callback=conf_callback,
     default=click.get_app_dir(APP_NAME),
     show_default=True,
@@ -180,7 +182,6 @@ def conf_callback(a,b,c):
 )
 def main(
     ctx,
-    config,
     directory: str,
     user: str,
     password: Optional[str],
@@ -190,88 +191,82 @@ def main(
     rename_local: bool,
     date_format: str,
     skip_existing_media: bool,
+    config: str, #required to be here, despite being as-of-yet unused.
 ):
     """A simple utility to export google keep notes to markdown files with metadata stored as a frontmatter header."""
     notepath = pathlib.Path(directory).resolve()
     mediapath = notepath.joinpath("media/")
 
-    print(click.get_app_dir(APP_NAME))
-    # print(click.get_current_context())
-    # print(click.get_current_context().cmd_info)
-    # print(click.get_app_dir(click.get_current_context().cmd_info))
+    if ctx.invoked_subcommand is not None:
+        return False
 
-    # exit()  
-    ctx.ensure_object(dict)
 
     click.echo(f"Notes directory: {notepath}")
     click.echo(f"Media directory: {mediapath}")
 
-    # keep, new_token = login(user, password, token)
-    # if len(new_token) > 0:
-    #     pass # save new token, where/how?
+    keep = login(user, password, token)
 
+    if not notepath.exists():
+        click.echo("Notes directory does not exist, creating.")
+        notepath.mkdir(parents=True)
 
-    # if not notepath.exists():
-    #     click.echo("Notes directory does not exist, creating.")
-    #     notepath.mkdir(parents=True)
+    if not mediapath.exists():
+        click.echo("Media directory does not exist, creating.")
+        mediapath.mkdir(parents=True)
 
-    # if not mediapath.exists():
-    #     click.echo("Media directory does not exist, creating.")
-    #     mediapath.mkdir(parents=True)
+    click.echo("Indexing local files.")
+    local_index = index_existing_files(notepath)
 
-    # click.echo("Indexing local files.")
-    # local_index = index_existing_files(notepath)
+    click.echo("Indexing remote notes.")
+    keep_notes = dict([(note.id, note) for note in keep.all()])
 
-    # click.echo("Indexing remote notes.")
-    # keep_notes = dict([(note.id, note) for note in keep.all()])
+    skipped_notes, updated_notes, new_notes = 0, 0, 0
+    downloaded_media = 0
+    deleted_notes, deleted_media = delete_local_only_files(
+        local_index, keep_notes, delete_local
+    )
 
-    # skipped_notes, updated_notes, new_notes = 0, 0, 0
-    # downloaded_media = 0
-    # deleted_notes, deleted_media = delete_local_only_files(
-    #     local_index, keep_notes, delete_local
-    # )
+    for note in keep_notes.values():  # type: gkeepapi._node.Note
+        local_note = local_index.get(note.id)
+        if not local_note:
+            click.echo(f"Downloading new note {note.id}")
+            new_notes += 1
 
-    # for note in keep_notes.values():  # type: gkeepapi._node.Note
-    #     local_note = local_index.get(note.id)
-    #     if not local_note:
-    #         click.echo(f"Downloading new note {note.id}")
-    #         new_notes += 1
+        target_path = build_note_unique_path(notepath, note, date_format, local_index)
 
-    #     target_path = build_note_unique_path(notepath, note, date_format, local_index)
+        local_path = local_index.get(note.id, LocalNote(note.id)).path
+        if local_path:
+            if rename_local and local_path != target_path:
+                target_path = try_rename_note(local_index[note.id], target_path)
+            else:
+                target_path = local_path
 
-    #     local_path = local_index.get(note.id, LocalNote(note.id)).path
-    #     if local_path:
-    #         if rename_local and local_path != target_path:
-    #             target_path = try_rename_note(local_index[note.id], target_path)
-    #         else:
-    #             target_path = local_path
+        # decide to skip after the rename (due to date format change) has a chance
+        if local_note:
+            if local_note.timestamp_updated == note.timestamps.updated:
+                skipped_notes += 1
+                continue
+            else:
+                updated_notes += 1
+                click.echo(f"Updating existing file for note {note.id}")
 
-    #     # decide to skip after the rename (due to date format change) has a chance
-    #     if local_note:
-    #         if local_note.timestamp_updated == note.timestamps.updated:
-    #             skipped_notes += 1
-    #             continue
-    #         else:
-    #             updated_notes += 1
-    #             click.echo(f"Updating existing file for note {note.id}")
+        images, downloaded = download_media(keep, note, mediapath, skip_existing_media)
+        markdown = build_markdown(note, images)
 
-    #     images, downloaded = download_media(keep, note, mediapath, skip_existing_media)
-    #     markdown = build_markdown(note, images)
+        downloaded_media += downloaded
 
-    #     downloaded_media += downloaded
+        with target_path.open("wb+") as f:
+            if header:
+                fmatter = build_frontmatter(note, markdown)
+                frontmatter.dump(fmatter, f)
+            else:
+                f.write(markdown.encode("utf-8"))
 
-    #     with target_path.open("wb+") as f:
-    #         if header:
-    #             fmatter = build_frontmatter(note, markdown)
-    #             frontmatter.dump(fmatter, f)
-    #         else:
-    #             f.write(markdown.encode("utf-8"))
-
-    # click.echo("Finished syncing.")
-    # click.echo(
-    #     f"Notes: {skipped_notes} unchanged, {updated_notes} updated, {new_notes} new, {deleted_notes} deleted"
-    # )
-    # click.echo(f"Media: {downloaded_media} downloaded, {deleted_media} deleted")
+    click.echo("Finished syncing.")
+    click.echo(
+        f"Notes: {skipped_notes} unchanged, {updated_notes} updated, {new_notes} new, {deleted_notes} deleted"
+    )
+    click.echo(f"Media: {downloaded_media} downloaded, {deleted_media} deleted")
 
 @main.command()
 @click.pass_context
@@ -279,7 +274,7 @@ def savetoken(ctx):
     """ Saves the master token to your configuration file. Avoids re-logging in every time an export happens. """
     user, password, token = ctx.parent.params.get('user',''), ctx.parent.params.get('password', ''), ctx.parent.params.get('token', '')
 
-    keep, new_token = login(user, password)
+    keep = login(user, password)
     click.echo("Saving master token.")
 
     config_file = ctx.parent.params.get('config', None)
@@ -292,9 +287,6 @@ def savetoken(ctx):
             config_obj.write()
 
             click.echo("Master token written to configuration file.")
-
-
-    # print('done')
 
 
 
