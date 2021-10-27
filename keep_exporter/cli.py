@@ -1,33 +1,51 @@
-import pathlib
-from typing import Any, Optional, Union, Tuple
-
-import click
-import click_config_file
-from configobj import ConfigObj
-import frontmatter
-import gkeepapi
-
-# from .export import *
-from keep_exporter.export import (
-    LocalNote,
-    build_frontmatter,
-    build_markdown,
-    build_note_unique_path,
-    write_note,
-    delete_local_only_files,
-    download_media,
-    index_existing_files,
-    # login,
-    try_rename_note,
-)
+#!/usr/bin/env python3
+"""keep_exporter command line interface module. Provides the actual user interactions to `export.py`."""
+__version__ = "2.0.0"
+__author__ = "Nathan Beals, Matthew Bafford"
 
 APP_NAME = "Keep Exporter"
 
-# import keep_exporter.export as export
+import pathlib
+from typing import Any, Optional, Tuple, Union
+
+import click
+import click_config_file
+import frontmatter
+import gkeepapi
+from configobj import ConfigObj
+
+# from .export import *
+from keep_exporter.export import build_frontmatter  # login,
+from keep_exporter.export import (
+    LocalNote,
+    build_markdown,
+    build_note_unique_path,
+    delete_local_only_files,
+    download_media,
+    index_existing_files,
+    try_rename_note,
+    write_note,
+)
+
+
+
 
 def login(
     user_email: str, password: Optional[str], token: Optional[str] = None
 ) -> gkeepapi.Keep:
+    """Logs in with the given email and password or token.
+
+    Args:
+        user_email (str): user's google email address
+        password (Optional[str]): account password, either this or `token` are *required*
+        token (Optional[str], optional): account token, either this or `password` are **required**. Defaults to None.
+
+    Raises:
+        click.BadParameter: Login failed
+
+    Returns:
+        gkeepapi.Keep: the `keep <gkeepapi.Keep>` object
+    """
     keep = gkeepapi.Keep()
     if token:
         try:
@@ -50,11 +68,8 @@ def login(
     raise click.BadParameter(f"Neither password nor token provided to login.")
 
 
-
-
 def get_click_supplied_value(ctx: click.core.Context, param_name: str) -> Any:
-    """
-    Find the value passed to Click through the following priority:
+    """Find the value passed to Click through the following priority:
 
     #1 - a parameter passed on the command line
     #2 - a config value passed through @click_config_file
@@ -98,16 +113,10 @@ def token_callback_password_or_token(
     return token
 
 
-def conf_callback(a,b,c):
-    print("callb",a,b,c)
-
-# @click.command(
-#     context_settings={"max_content_width": 120, "help_option_names": ["-h", "--help"]}
-# )
 @click.group(
     invoke_without_command=True,
     # invoke_without_command=False,
-    context_settings={"max_content_width": 120, "help_option_names": ["-h", "--help"]}
+    context_settings={"max_content_width": 120, "help_option_names": ["-h", "--help"]},
 )
 @click.pass_context
 @click_config_file.configuration_option(
@@ -192,7 +201,7 @@ def main(
     rename_local: bool,
     date_format: str,
     skip_existing_media: bool,
-    config: str, #required to be here, despite being as-of-yet unused.
+    config: str,  # required to be here, despite being as-of-yet unused.
 ):
     """A simple utility to export google keep notes to markdown files with metadata stored as a frontmatter header."""
     notepath = pathlib.Path(directory).resolve()
@@ -200,7 +209,6 @@ def main(
 
     if ctx.invoked_subcommand is not None:
         return False
-
 
     click.echo(f"Notes directory: {notepath}")
     click.echo(f"Media directory: {mediapath}")
@@ -264,26 +272,30 @@ def main(
     )
     click.echo(f"Media: {downloaded_media} downloaded, {deleted_media} deleted")
 
+
 @main.command()
 @click.pass_context
 def savetoken(ctx):
-    """ Saves the master token to your configuration file. Avoids re-logging in every time an export happens. """
-    user, password, token = ctx.parent.params.get('user',''), ctx.parent.params.get('password', ''), ctx.parent.params.get('token', '')
+    """Saves the master token to your configuration file. Avoids re-logging in every time an export happens."""
+    user, password, token = (
+        ctx.parent.params.get("user", ""),
+        ctx.parent.params.get("password", ""),
+        ctx.parent.params.get("token", ""),
+    )
 
     keep = login(user, password)
     click.echo("Saving master token.")
 
-    config_file = ctx.parent.params.get('config', None)
+    config_file = ctx.parent.params.get("config", None)
 
     if config_file:
-        config_obj = ConfigObj( config_file, unrepr=True )
+        config_obj = ConfigObj(config_file, unrepr=True)
 
-        if keep.getMasterToken() != config_obj.get('token',''):
-            config_obj['token'] = keep.getMasterToken()
+        if keep.getMasterToken() != config_obj.get("token", ""):
+            config_obj["token"] = keep.getMasterToken()
             config_obj.write()
 
             click.echo("Master token written to configuration file.")
-
 
 
 if __name__ == "__main__":
