@@ -14,8 +14,7 @@ import frontmatter
 import gkeepapi
 from configobj import ConfigObj
 
-# from .export import *
-from keep_exporter.export import build_frontmatter  # login,
+
 from keep_exporter.export import (
     LocalNote,
     build_markdown,
@@ -226,19 +225,14 @@ def main(
     delete_local: bool,
     rename_local: bool,
     date_format: str,
-    iso8601: Any,
     skip_existing_media: bool,
+    iso8601: Any,
     config: str,  # required to be here, despite being as-of-yet unused.
 ):
     """A simple utility to export google keep notes to markdown files with metadata stored as a frontmatter header."""
 
     notepath = pathlib.Path(directory).resolve()
     mediapath = notepath.joinpath("media/")
-
-    print(date_format)
-    print(iso8601)
-    quit()
-
     if ctx.invoked_subcommand is not None:
         return False
 
