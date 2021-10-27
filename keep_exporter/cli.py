@@ -13,6 +13,7 @@ from keep_exporter.export import (
     build_frontmatter,
     build_markdown,
     build_note_unique_path,
+    write_note,
     delete_local_only_files,
     download_media,
     index_existing_files,
@@ -255,12 +256,7 @@ def main(
 
         downloaded_media += downloaded
 
-        with target_path.open("wb+") as f:
-            if header:
-                fmatter = build_frontmatter(note, markdown)
-                frontmatter.dump(fmatter, f)
-            else:
-                f.write(markdown.encode("utf-8"))
+        write_note(target_path, header, note, markdown)
 
     click.echo("Finished syncing.")
     click.echo(
