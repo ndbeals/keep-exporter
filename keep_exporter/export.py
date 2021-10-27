@@ -100,8 +100,9 @@ def build_frontmatter(note: gkeepapi._node.Note, markdown: str) -> frontmatter.P
         "google_keep_id": note.id,
         "title": note.title,
         "pinned": note.pinned,
+        "archived": note.archived,
         "trashed": note.trashed,
-        "deleted": note.deleted,
+        # "deleted": note.deleted, -- unused, when google keep actually ~deletes~ a note, the api no longer returns it
         "color": note.color.name,
         "type": note.type.name,
         "parent_id": note.parent_id,
