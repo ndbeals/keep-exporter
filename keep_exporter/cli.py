@@ -1,28 +1,73 @@
+#!/usr/bin/env python3
+"""keep_exporter command line interface module. Provides the actual user interactions to `export.py`."""
+__version__ = "2.0.0"
+__author__ = "Nathan Beals, Matthew Bafford"
+
+APP_NAME = "Keep Exporter"
+
 import pathlib
-from typing import Any, Optional, Union
+from typing import Any, Optional, Tuple, Union
 
 import click
+import click_config_file
 import frontmatter
+import gkeepapi
+from configobj import ConfigObj
 
 # from .export import *
+from keep_exporter.export import build_frontmatter  # login,
 from keep_exporter.export import (
     LocalNote,
-    build_frontmatter,
     build_markdown,
     build_note_unique_path,
     delete_local_only_files,
     download_media,
     index_existing_files,
-    login,
     try_rename_note,
+    write_note,
 )
 
-# import keep_exporter.export as export
+
+def login(
+    user_email: str, password: Optional[str], token: Optional[str] = None
+) -> gkeepapi.Keep:
+    """Logs in with the given email and password or token.
+
+    Args:
+        user_email (str): user's google email address
+        password (Optional[str]): account password, either this or `token` are *required*
+        token (Optional[str], optional): account token, either this or `password` are **required**. Defaults to None.
+
+    Raises:
+        click.BadParameter: Login failed
+
+    Returns:
+        gkeepapi.Keep: the `keep <gkeepapi.Keep>` object
+    """
+    keep = gkeepapi.Keep()
+    if token:
+        try:
+            click.echo("Logging in with token")
+            keep.resume(user_email, token)
+
+            return keep
+        except gkeepapi.exception.LoginException as ex:
+            raise click.BadParameter(f"Token login (resume) failed: {str(ex)}")
+
+    if password:
+        try:
+            click.echo("Logging in with password")
+            keep.login(user_email, password)
+
+            return keep
+        except gkeepapi.exception.LoginException as ex:
+            raise click.BadParameter(f"Password login failed: {str(ex)}")
+
+    raise click.BadParameter(f"Neither password nor token provided to login.")
 
 
 def get_click_supplied_value(ctx: click.core.Context, param_name: str) -> Any:
-    """
-    Find the value passed to Click through the following priority:
+    """Find the value passed to Click through the following priority:
 
     #1 - a parameter passed on the command line
     #2 - a config value passed through @click_config_file
@@ -66,13 +111,38 @@ def token_callback_password_or_token(
     return token
 
 
-import click_config_file
+def date_format_handler(
+    ctx: click.core.Context,
+    param: Union[click.core.Option, click.core.Parameter],
+    value: Any,
+) -> str:
+
+    if param.name == "date_format":
+        if (
+            ctx.params.get("date_format") and param.default == value
+        ):  # If date_format is already set by some other flag, return that same data
+            return ctx.params.get("date_format")
+        else:
+            return value  # otherwise, set the format to the passed value
+    else:
+        if value:
+            ctx.params["date_format"] = param.metavar
+
+            return value
 
 
-@click.command(
-    context_settings={"max_content_width": 120, "help_option_names": ["-h", "--help"]}
+@click.group(
+    invoke_without_command=True,
+    # invoke_without_command=False,
+    context_settings={"max_content_width": 160, "help_option_names": ["-h", "--help"]},
 )
-@click_config_file.configuration_option()
+@click.pass_context
+@click_config_file.configuration_option(
+    config_file_name=click.get_app_dir(APP_NAME),
+    default=click.get_app_dir(APP_NAME),
+    show_default=True,
+    expose_value=True,
+)
 @click.option(
     "--user",
     "-u",
@@ -123,11 +193,22 @@ import click_config_file
     show_default=True,
     help="Choose to rename or leave as-is any notes that change titles in Google Keep",
 )
-@click.option(
+@click.option(  # Other date-options (e.g --iso8601) must come after this one
     "--date-format",
+    "date_format",
     default="%Y-%m-%d",
+    is_flag=False,
     show_default=True,
-    help="Date format to use for the prefix of the note filenames. Reflects the created date of the note.",
+    help="Date format to prefix the note filenames. Reflects the created date of the note. uses strftime()",
+    callback=date_format_handler,
+)
+@click.option(
+    "--iso8601",
+    metavar="%Y-%m-%dT%H:%M:%S",  # use `metavar` for the format instead of default or flag_value, hack around click stuff
+    default=False,
+    is_flag=True,
+    help="Format dates in ISO8601 format.",
+    callback=date_format_handler,
 )
 @click.option(
     "--skip-existing-media/--no-skip-existing-media",
@@ -136,6 +217,7 @@ import click_config_file
     help="Skip existing media if it appears unchanged from the local copy.",
 )
 def main(
+    ctx,
     directory: str,
     user: str,
     password: Optional[str],
@@ -144,11 +226,21 @@ def main(
     delete_local: bool,
     rename_local: bool,
     date_format: str,
+    iso8601: Any,
     skip_existing_media: bool,
+    config: str,  # required to be here, despite being as-of-yet unused.
 ):
     """A simple utility to export google keep notes to markdown files with metadata stored as a frontmatter header."""
+
     notepath = pathlib.Path(directory).resolve()
     mediapath = notepath.joinpath("media/")
+
+    print(date_format)
+    print(iso8601)
+    quit()
+
+    if ctx.invoked_subcommand is not None:
+        return False
 
     click.echo(f"Notes directory: {notepath}")
     click.echo(f"Media directory: {mediapath}")
@@ -204,18 +296,38 @@ def main(
 
         downloaded_media += downloaded
 
-        with target_path.open("wb+") as f:
-            if header:
-                fmatter = build_frontmatter(note, markdown)
-                frontmatter.dump(fmatter, f)
-            else:
-                f.write(markdown.encode("utf-8"))
+        write_note(target_path, header, note, markdown)
 
     click.echo("Finished syncing.")
     click.echo(
         f"Notes: {skipped_notes} unchanged, {updated_notes} updated, {new_notes} new, {deleted_notes} deleted"
     )
     click.echo(f"Media: {downloaded_media} downloaded, {deleted_media} deleted")
+
+
+@main.command()
+@click.pass_context
+def savetoken(ctx):
+    """Saves the master token to your configuration file. Avoids re-logging in every time an export happens."""
+    user, password, token = (
+        ctx.parent.params.get("user", ""),
+        ctx.parent.params.get("password", ""),
+        ctx.parent.params.get("token", ""),
+    )
+
+    keep = login(user, password)
+    click.echo("Saving master token.")
+
+    config_file = ctx.parent.params.get("config", None)
+
+    if config_file:
+        config_obj = ConfigObj(config_file, unrepr=True)
+
+        if keep.getMasterToken() != config_obj.get("token", ""):
+            config_obj["token"] = keep.getMasterToken()
+            config_obj.write()
+
+            click.echo("Master token written to configuration file.")
 
 
 if __name__ == "__main__":

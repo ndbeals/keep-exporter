@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
+# pylint: disable=protected-access
 import datetime
 import mimetypes
 import pathlib
-from typing import Any, Dict, List, NamedTuple, Optional, Set, Tuple, Union, ValuesView
+from typing import Dict, List, NamedTuple, Optional, Set, Tuple, Union, ValuesView
 
 import click
-import click_config_file
+
+# import click_config_file
 import frontmatter
 import gkeepapi
 from gkeepapi.node import NodeAudio, NodeDrawing, NodeImage
@@ -13,31 +15,6 @@ from mdutils.mdutils import MdUtils
 from pathvalidate import sanitize_filename
 
 mimetypes.add_type("audio/3gpp", ".3gp")
-
-
-def login(
-    user_email: str, password: Optional[str], token: Optional[str]
-) -> gkeepapi.Keep:
-    keep = gkeepapi.Keep()
-    if token:
-        try:
-            click.echo("Logging in with token")
-            keep.resume(user_email, token)
-            # print(keep.getMasterToken())
-            return keep
-        except gkeepapi.exception.LoginException as ex:
-            raise click.BadParameter(f"Token login (resume) failed: {str(ex)}")
-
-    if password:
-        try:
-            click.echo("Logging in with password")
-            keep.login(user_email, password)
-            # print(keep.getMasterToken())
-            return keep
-        except gkeepapi.exception.LoginException as ex:
-            raise click.BadParameter(f"Password login failed: {str(ex)}")
-
-    raise click.BadParameter(f"Neither password nor token provided to login.")
 
 
 def all_note_media(
@@ -109,8 +86,8 @@ def download_media(
 
             url = keep._media_api.get(media)
             media_data = keep._media_api._session.get(url)
-            with media_file.open("wb") as f:
-                f.write(media_data.content)
+            with media_file.open("wb") as file_handle:
+                file_handle.write(media_data.content)
 
             downloaded_media += 1
 
@@ -121,25 +98,27 @@ def download_media(
 
 def build_frontmatter(note: gkeepapi._node.Note, markdown: str) -> frontmatter.Post:
     metadata = {
-        "google_keep_id": note.id,
         "title": note.title,
-        "pinned": note.pinned,
-        "trashed": note.trashed,
-        "deleted": note.deleted,
-        "color": note.color.name,
-        "type": note.type.name,
-        "parent_id": note.parent_id,
-        "sort": note.sort,
         "url": note.url,
+        "pinned": note.pinned,
+        "archived": note.archived,
+        "trashed": note.trashed,
+        # "deleted": note.deleted, # unused, when google keep actually ~deletes~ a note, the api no longer returns it
         "tags": [label.name for label in note.labels.all()],
+        "color": note.color.name,
         "timestamps": {
             "created": note.timestamps.created.timestamp(),
             "edited": note.timestamps.edited.timestamp(),
             "updated": note.timestamps.updated.timestamp(),
         },
+        "google_keep_id": note.id,
+        "type": note.type.name,
+        "parent_id": note.parent_id,
+        "sort": note.sort,
     }
 
-    # gkeepapi appears to be treating "0" as a timestamp rather than null. Sometimes the data structure does not have the key at all instead of 0.
+    # gkeepapi appears to be treating "0" as a timestamp rather than null.
+    # Sometimes the data structure does not have the key at all instead of 0.
     if note.timestamps.trashed and note.timestamps.trashed.year > 1970:
         metadata["timestamps"]["trashed"] = note.timestamps.trashed.timestamp()
     if note.timestamps.deleted and note.timestamps.deleted.year > 1970:
@@ -151,7 +130,7 @@ def build_frontmatter(note: gkeepapi._node.Note, markdown: str) -> frontmatter.P
 def build_markdown(note: gkeepapi._node.Note, images: List[pathlib.Path]) -> str:
     doc = MdUtils(
         ""
-    )  # mdutils requires a string file name. Since we're not using it to write files, we can ignore that.
+    )  # mdutils requires a string file name. We're not using it to write files, ignore it.
 
     doc.new_header(1, note.title)
     doc.new_header(2, "Note")
@@ -181,6 +160,18 @@ def build_markdown(note: gkeepapi._node.Note, images: List[pathlib.Path]) -> str
             doc.new_line(doc.new_inline_image("", image.name))
 
     return doc.file_data_text
+
+
+def write_note(target_path, header, note, markdown):
+    """Writes built notes to disk, optionally builds a header/frontmatter too."""
+    with target_path.open("wb+") as file_handle:
+        if header:
+            front_matter = build_frontmatter(note, markdown)
+            frontmatter.dump(
+                front_matter, file_handle, sort_keys=False
+            )  # don't sort frontmatter keys
+        else:
+            file_handle.write(markdown.encode("utf-8"))
 
 
 LocalMedia = NamedTuple(
@@ -232,8 +223,8 @@ def index_existing_files(directory: pathlib.Path) -> Dict[str, LocalNote]:
         # markdown file
         if file.name.endswith(".md"):
             try:
-                with open(file, "r") as f:
-                    fm = frontmatter.load(f)
+                with open(file, "r") as file_handle:
+                    fm = frontmatter.load(file_handle)
 
                     google_keep_id: str = fm.metadata.get("google_keep_id")
                     if google_keep_id:
@@ -260,7 +251,7 @@ def index_existing_files(directory: pathlib.Path) -> Dict[str, LocalNote]:
             except IOError as ex:
                 errors = 0
                 click.echo(
-                    "Unable to open Markdown file [{os.path.join(root, file)}]. Skipping: {str(ex)}",
+                    f"Unable to open Markdown file {file}. Skipping: {str(ex)}",
                     err=True,
                 )
 
@@ -298,7 +289,7 @@ def try_rename_note(note: LocalNote, target_file: pathlib.Path) -> pathlib.Path:
         note.path.rename(target_file)
         return target_file
     except Exception as ex:
-        click.echo(f"Unable to rename note. Using existing name: %s" % ex, err=True)
+        click.echo(f"Unable to rename note. Using existing name: {ex}", err=True)
         return note.path
 
 
