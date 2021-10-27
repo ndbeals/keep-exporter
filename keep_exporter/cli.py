@@ -116,14 +116,11 @@ def token_callback_password_or_token(
 @click.group(
     invoke_without_command=True,
     # invoke_without_command=False,
-    context_settings={"max_content_width": 120, "help_option_names": ["-h", "--help"]},
+    context_settings={"max_content_width": 160, "help_option_names": ["-h", "--help"]},
 )
 @click.pass_context
 @click_config_file.configuration_option(
-    # implicit=False,
     config_file_name=click.get_app_dir(APP_NAME),
-    # config_file_name="test",
-    # callback=conf_callback,
     default=click.get_app_dir(APP_NAME),
     show_default=True,
     expose_value=True,
@@ -179,10 +176,19 @@ def token_callback_password_or_token(
     help="Choose to rename or leave as-is any notes that change titles in Google Keep",
 )
 @click.option(
+    "--iso8601",
+    "date_format",
+    flag_value="%Y-%m-%dT%H:%M:%S",
+    is_flag=True,
+    help="Format dates in ISO8601 format."
+)
+@click.option( # Other date-options (e.g --iso8601) must come before this one
     "--date-format",
+    "date_format",
     default="%Y-%m-%d",
+    is_flag=False,
     show_default=True,
-    help="Date format to use for the prefix of the note filenames. Reflects the created date of the note.",
+    help="Date format  to prefix the note filenames. Reflects the created date of the note. uses strftime()",
 )
 @click.option(
     "--skip-existing-media/--no-skip-existing-media",
@@ -204,6 +210,7 @@ def main(
     config: str,  # required to be here, despite being as-of-yet unused.
 ):
     """A simple utility to export google keep notes to markdown files with metadata stored as a frontmatter header."""
+
     notepath = pathlib.Path(directory).resolve()
     mediapath = notepath.joinpath("media/")
 
