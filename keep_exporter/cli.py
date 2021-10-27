@@ -112,6 +112,23 @@ def token_callback_password_or_token(
 
     return token
 
+def date_format_handler(
+    ctx: click.core.Context,
+    param: Union[click.core.Option, click.core.Parameter],
+    value: Any,
+) -> str:
+    
+    if param.name == "date_format":
+        if ctx.params.get('date_format') and param.default == value: # If date_format is already set by some other flag, return that same data
+            return ctx.params.get('date_format')
+        else:
+            return value #otherwise, set the format to the passed value
+    else:
+        if value:
+            ctx.params['date_format'] = param.metavar
+
+            return value
+
 
 @click.group(
     invoke_without_command=True,
@@ -175,20 +192,22 @@ def token_callback_password_or_token(
     show_default=True,
     help="Choose to rename or leave as-is any notes that change titles in Google Keep",
 )
-@click.option(
-    "--iso8601",
-    "date_format",
-    flag_value="%Y-%m-%dT%H:%M:%S",
-    is_flag=True,
-    help="Format dates in ISO8601 format."
-)
-@click.option( # Other date-options (e.g --iso8601) must come before this one
+@click.option( # Other date-options (e.g --iso8601) must come after this one
     "--date-format",
     "date_format",
     default="%Y-%m-%d",
     is_flag=False,
     show_default=True,
-    help="Date format  to prefix the note filenames. Reflects the created date of the note. uses strftime()",
+    help="Date format to prefix the note filenames. Reflects the created date of the note. uses strftime()",
+    callback=date_format_handler,
+)
+@click.option(
+    "--iso8601",
+    metavar="%Y-%m-%dT%H:%M:%S", # use `metavar` for the format instead of default or flag_value, hack around click stuff
+    default=False,
+    is_flag=True,
+    help="Format dates in ISO8601 format.",
+    callback=date_format_handler,
 )
 @click.option(
     "--skip-existing-media/--no-skip-existing-media",
@@ -206,6 +225,7 @@ def main(
     delete_local: bool,
     rename_local: bool,
     date_format: str,
+    iso8601: Any,
     skip_existing_media: bool,
     config: str,  # required to be here, despite being as-of-yet unused.
 ):
@@ -213,6 +233,10 @@ def main(
 
     notepath = pathlib.Path(directory).resolve()
     mediapath = notepath.joinpath("media/")
+
+    print(date_format)
+    print(iso8601)
+    quit()
 
     if ctx.invoked_subcommand is not None:
         return False
