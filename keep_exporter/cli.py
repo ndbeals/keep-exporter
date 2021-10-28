@@ -1,20 +1,12 @@
 #!/usr/bin/env python3
 """keep_exporter command line interface module. Provides the actual user interactions to `export.py`."""
-__version__ = "2.0.0"
-__author__ = "Nathan Beals, Matthew Bafford"
-
-APP_NAME = "Keep Exporter"
-
 import pathlib
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import click
 import click_config_file
-import frontmatter
 import gkeepapi
 from configobj import ConfigObj
-
-
 from keep_exporter.export import (
     LocalNote,
     build_markdown,
@@ -25,6 +17,11 @@ from keep_exporter.export import (
     try_rename_note,
     write_note,
 )
+
+__version__ = "2.0.1"
+__author__ = "Nathan Beals, Matthew Bafford"
+
+APP_NAME = "Keep Exporter"
 
 
 def login(
@@ -62,7 +59,7 @@ def login(
         except gkeepapi.exception.LoginException as ex:
             raise click.BadParameter(f"Password login failed: {str(ex)}")
 
-    raise click.BadParameter(f"Neither password nor token provided to login.")
+    raise click.BadParameter("Neither password nor token provided to login.")
 
 
 def get_click_supplied_value(ctx: click.core.Context, param_name: str) -> Any:
@@ -88,7 +85,7 @@ def get_click_supplied_value(ctx: click.core.Context, param_name: str) -> Any:
 
 def token_callback_password_or_token(
     ctx: click.core.Context,
-    param: Union[click.core.Option, click.core.Parameter],
+    _param: Union[click.core.Option, click.core.Parameter],
     value: Any,
 ) -> Any:
     """
@@ -115,6 +112,16 @@ def date_format_handler(
     param: Union[click.core.Option, click.core.Parameter],
     value: Any,
 ) -> str:
+    """handles the various flags that modify `date_format`
+
+    Args:
+        ctx (click.core.Context): App context
+        param (Union[click.core.Option, click.core.Parameter]): the current flag/option modifying date format
+        value (Any): The value of said option, not really used
+
+    Returns:
+        str: the option value to set
+    """
 
     if param.name == "date_format":
         if (
@@ -203,7 +210,7 @@ def date_format_handler(
 )
 @click.option(
     "--iso8601",
-    metavar="%Y-%m-%dT%H:%M:%S",  # use `metavar` for the format instead of default or flag_value, hack around click stuff
+    metavar="%Y-%m-%dT%H:%M:%S",  # use `metavar` for the format instead of default or flag_value, hack
     default=False,
     is_flag=True,
     help="Format dates in ISO8601 format.",
@@ -226,11 +233,11 @@ def main(
     rename_local: bool,
     date_format: str,
     skip_existing_media: bool,
-    iso8601: Any,
-    config: str,  # required to be here, despite being as-of-yet unused.
+    # iso8601: Any,
+    # config: str,  # required to be here, despite being as-of-yet unused.
+    **_kwargs,
 ):
     """A simple utility to export google keep notes to markdown files with metadata stored as a frontmatter header."""
-
     notepath = pathlib.Path(directory).resolve()
     mediapath = notepath.joinpath("media/")
     if ctx.invoked_subcommand is not None:
@@ -303,7 +310,7 @@ def main(
 @click.pass_context
 def savetoken(ctx):
     """Saves the master token to your configuration file. Avoids re-logging in every time an export happens."""
-    user, password, token = (
+    user, password, _token = (
         ctx.parent.params.get("user", ""),
         ctx.parent.params.get("password", ""),
         ctx.parent.params.get("token", ""),

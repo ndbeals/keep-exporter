@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Library functions that do the heavy lifting of this package."""
 # pylint: disable=protected-access
 import datetime
 import mimetypes
@@ -34,6 +35,17 @@ def download_media(
     mediapath: pathlib.Path,
     skip_existing: bool,
 ) -> Tuple[List[pathlib.Path], int]:
+    """Downloads media files from keep
+
+    Args:
+        keep (gkeepapi.Keep): keep instance
+        note (gkeepapi._node.Note): specific note to download media from
+        mediapath (pathlib.Path): path to put media
+        skip_existing (bool): skip existing media?
+
+    Returns:
+        Tuple[List[pathlib.Path], int]: List of paths where media was put
+    """
 
     note_media = all_note_media(note)
     if not note_media:
@@ -97,6 +109,15 @@ def download_media(
 
 
 def build_frontmatter(note: gkeepapi._node.Note, markdown: str) -> frontmatter.Post:
+    """Builds the frontmatter header put at the top of notes
+
+    Args:
+        note (gkeepapi._node.Note): Note to build header from
+        markdown (str): markdown body
+
+    Returns:
+        frontmatter.Post: Completed header + body
+    """
     metadata = {
         "title": note.title,
         "url": note.url,
@@ -128,6 +149,15 @@ def build_frontmatter(note: gkeepapi._node.Note, markdown: str) -> frontmatter.P
 
 
 def build_markdown(note: gkeepapi._node.Note, images: List[pathlib.Path]) -> str:
+    """builds the markdown body from a given note
+
+    Args:
+        note (gkeepapi._node.Note): Note to build body out of
+        images (List[pathlib.Path]): Images embedded in body
+
+    Returns:
+        str: string representation of the body contents
+    """
     doc = MdUtils(
         ""
     )  # mdutils requires a string file name. We're not using it to write files, ignore it.
@@ -223,10 +253,10 @@ def index_existing_files(directory: pathlib.Path) -> Dict[str, LocalNote]:
         # markdown file
         if file.name.endswith(".md"):
             try:
-                with open(file, "r") as file_handle:
-                    fm = frontmatter.load(file_handle)
+                with file.open("rt") as file_handle:
+                    note_frontmatter = frontmatter.load(file_handle)
 
-                    google_keep_id: str = fm.metadata.get("google_keep_id")
+                    google_keep_id: str = note_frontmatter.metadata.get("google_keep_id")
                     if google_keep_id:
                         if google_keep_id in index and index[google_keep_id].path:
                             click.echo(
@@ -240,7 +270,7 @@ def index_existing_files(directory: pathlib.Path) -> Dict[str, LocalNote]:
                         index.setdefault(google_keep_id, LocalNote(google_keep_id))
 
                         updated: datetime.datetime = datetime.datetime.fromtimestamp(
-                            fm.metadata.get("timestamps", {}).get("updated")
+                            note_frontmatter.metadata.get("timestamps", {}).get("updated")
                         )
 
                         index[google_keep_id].timestamp_updated = updated
@@ -288,6 +318,7 @@ def try_rename_note(note: LocalNote, target_file: pathlib.Path) -> pathlib.Path:
     try:
         note.path.rename(target_file)
         return target_file
+    # pylint: disable=broad-except
     except Exception as ex:
         click.echo(f"Unable to rename note. Using existing name: {ex}", err=True)
         return note.path
@@ -299,8 +330,9 @@ def build_note_unique_path(
     date_format: str,
     local_index: Dict[str, LocalNote],
 ) -> pathlib.Path:
+
     title = note.title.strip()
-    if not len(title):
+    if len(title) < 1:
         title = "untitled"
 
     date_str = note.timestamps.created.strftime(date_format)

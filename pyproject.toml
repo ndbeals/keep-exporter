@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "keep_exporter"
-version = "2.0.0"
+version = "2.0.1"
 description = "Google Keep note exporter utility"
 authors = ["Nathan Beals <ndbeals@users.noreply.github.com>"]
 license = "BSD-3-Clause"
