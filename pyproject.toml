@@ -3,13 +3,28 @@ name = "keep_exporter"
 version = "2.0.0"
 description = "Google Keep note exporter utility"
 authors = ["Nathan Beals <ndbeals@users.noreply.github.com>"]
-license = "GPL v3"
+license = "BSD-3-Clause"
+readme = "README.md"
+homepage = "https://github.com/ndbeals/keep-exporter"
+repository = "https://github.com/ndbeals/keep-exporter"
+keywords = ["google", "google keep", "keep", "note", "export", "archive", "backup"]
+classifiers = [
+    "Environment :: Console",
+    "Operating System :: OS Independent",
+    "Topic :: System :: Archiving",
+    "Topic :: System :: Archiving :: Backup",
+    "Topic :: Terminals",
+    "Topic :: Utilities"
+]
+include = [
+    "LICENSE",
+]
 
 [tool.poetry.scripts]
 keep_export = "keep_exporter.cli:main"
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = "^3.6"
 gkeepapi = "^0.13.4"
 python-frontmatter = "^0.5.0"
 PyYAML = "^5.3.1"
